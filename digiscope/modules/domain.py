@@ -153,48 +153,207 @@ async def _rdap(ctx: ScanContext, domain: str) -> Dict[str, Any]:
 
 
 async def _certificates(ctx: ScanContext, domain: str) -> Dict[str, Any]:
-    url = "https://crt.sh/"
-    response = await ctx.fetcher.get_json(
-        url,
-        params={"q": f"%.{domain}", "output": "json"},
-        source="crt.sh",
-        max_bytes=2_000_000,
-    )
-    if not response.ok or not isinstance(response.data, list):
-        return {"ok": False, "url": url, "error": response.error or f"HTTP {response.status}"}
+    """Union passive hostnames from CT, archives and public DNS datasets."""
+
     max_subdomains = max(1, min(int(ctx.key("max_subdomains", 100)), 500))
+    source_requests = [
+        (
+            "crt.sh",
+            ctx.fetcher.get_json(
+                "https://crt.sh/",
+                params={"q": f"%.{domain}", "output": "json"},
+                source="crt.sh",
+                max_bytes=2_000_000,
+            ),
+        ),
+        (
+            "Cert Spotter",
+            ctx.fetcher.get_json(
+                "https://api.certspotter.com/v1/issuances",
+                params={"domain": domain, "include_subdomains": "true", "expand": "dns_names"},
+                source="Cert Spotter",
+                max_bytes=2_000_000,
+            ),
+        ),
+        (
+            "Wayback CDX",
+            ctx.fetcher.get_json(
+                "https://web.archive.org/cdx/search/cdx",
+                params={
+                    "url": f"*.{domain}/*",
+                    "output": "json",
+                    "fl": "original,timestamp,mimetype,statuscode",
+                    "filter": "statuscode:200",
+                    "collapse": "urlkey",
+                    "limit": max_subdomains * 10,
+                },
+                source="Wayback CDX",
+                max_bytes=2_000_000,
+            ),
+        ),
+        (
+            "HackerTarget",
+            ctx.fetcher.get_text(
+                "https://api.hackertarget.com/hostsearch/",
+                params={"q": domain},
+                source="HackerTarget hostsearch",
+                max_bytes=500_000,
+            ),
+        ),
+        (
+            "BufferOver",
+            ctx.fetcher.get_json(
+                "https://dns.bufferover.run/dns",
+                params={"q": f".{domain}"},
+                source="BufferOver DNS dataset",
+                max_bytes=1_000_000,
+            ),
+        ),
+        (
+            "urlscan.io",
+            ctx.fetcher.get_json(
+                "https://urlscan.io/api/v1/search/",
+                params={"q": f"domain:{domain}", "size": min(max_subdomains, 100)},
+                source="urlscan.io public search",
+                max_bytes=2_000_000,
+            ),
+        ),
+    ]
+    responses = await asyncio.gather(*(request for _source, request in source_requests))
     names = set()
+    source_map: Dict[str, set] = {}
+    source_status = []
     records = []
     issuers = set()
-    for item in response.data:
-        if not isinstance(item, dict):
+    failures = []
+
+    def add_name(value: Any, source: str) -> None:
+        candidate = str(value or "").strip().lower().lstrip("*.").rstrip(".")
+        if not candidate or not _valid_subdomain(candidate, domain):
+            return
+        names.add(candidate)
+        source_map.setdefault(candidate, set()).add(source)
+
+    for (source, _request), response in zip(source_requests, responses):
+        found_before = len(names)
+        if not response.ok:
+            error = response.error or f"HTTP {response.status}"
+            failures.append(f"{source}: {error}")
+            source_status.append({"source": source, "status": "unreachable", "records": 0, "error": error})
             continue
-        raw_names = str(item.get("name_value", "")).splitlines()
-        valid_names = [name.strip().lower().lstrip("*.") for name in raw_names if _valid_subdomain(name, domain)]
-        names.update(valid_names)
-        issuer = item.get("issuer_name") or ""
-        if issuer:
-            issuers.add(str(issuer))
-        if len(records) < 100:
-            records.append(
-                {
-                    "common_name": item.get("common_name", ""),
-                    "names": valid_names,
-                    "issuer": issuer,
-                    "not_before": item.get("not_before", ""),
-                    "not_after": item.get("not_after", ""),
-                    "serial": item.get("serial_number", ""),
-                }
-            )
+        data = response.data
+        if source == "crt.sh" and isinstance(data, list):
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                raw_names = str(item.get("name_value", "")).splitlines()
+                valid_names = []
+                for raw_name in raw_names:
+                    before = len(names)
+                    add_name(raw_name, source)
+                    normalized = str(raw_name).strip().lower().lstrip("*.").rstrip(".")
+                    if len(names) > before and normalized in names:
+                        valid_names.append(normalized)
+                issuer = item.get("issuer_name") or ""
+                if issuer:
+                    issuers.add(str(issuer))
+                if len(records) < 150:
+                    records.append(
+                        {
+                            "source": source,
+                            "common_name": item.get("common_name", ""),
+                            "names": valid_names,
+                            "issuer": issuer,
+                            "not_before": item.get("not_before", ""),
+                            "not_after": item.get("not_after", ""),
+                            "serial": item.get("serial_number", ""),
+                        }
+                    )
+        elif source == "Cert Spotter" and isinstance(data, list):
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                valid_names = []
+                for raw_name in item.get("dns_names", []) or []:
+                    add_name(raw_name, source)
+                    normalized = str(raw_name).strip().lower().lstrip("*.").rstrip(".")
+                    if normalized in names and _valid_subdomain(normalized, domain):
+                        valid_names.append(normalized)
+                issuer_data = item.get("issuer") or {}
+                issuer = issuer_data.get("name", "") if isinstance(issuer_data, dict) else str(issuer_data)
+                if issuer:
+                    issuers.add(str(issuer))
+                if len(records) < 150:
+                    records.append(
+                        {
+                            "source": source,
+                            "common_name": valid_names[0] if valid_names else "",
+                            "names": valid_names,
+                            "issuer": issuer,
+                            "not_before": item.get("not_before", ""),
+                            "not_after": item.get("not_after", ""),
+                            "serial": item.get("id", ""),
+                        }
+                    )
+        elif source == "Wayback CDX" and isinstance(data, list):
+            header = data[0] if data and isinstance(data[0], list) else []
+            try:
+                original_index = header.index("original")
+            except ValueError:
+                original_index = 0
+            for row in data[1:] if header else data:
+                if not isinstance(row, list) or len(row) <= original_index:
+                    continue
+                original = str(row[original_index])
+                try:
+                    add_name(urlsplit(original).hostname or "", source)
+                except ValueError:
+                    continue
+        elif source == "HackerTarget":
+            text = response.text or ""
+            if text.lower().startswith(("error", "please")):
+                failures.append(f"{source}: {text[:180]}")
+            else:
+                for line in text.splitlines():
+                    if "," in line:
+                        add_name(line.split(",", 1)[0], source)
+        elif source == "BufferOver" and isinstance(data, dict):
+            for key in ("FDNS_A", "RDNS"):
+                for value in data.get(key, []) or []:
+                    for part in str(value).split(","):
+                        add_name(part, source)
+        elif source == "urlscan.io" and isinstance(data, dict):
+            for item in data.get("results", []) or []:
+                if not isinstance(item, dict):
+                    continue
+                page = item.get("page") or {}
+                task = item.get("task") or {}
+                for value in (page.get("domain"), task.get("domain"), page.get("url"), task.get("url")):
+                    try:
+                        add_name(urlsplit(str(value)).hostname or str(value), source)
+                    except ValueError:
+                        continue
+        else:
+            failures.append(f"{source}: source returned an unexpected response shape")
+        source_status.append({"source": source, "status": "responded", "records": max(0, len(names) - found_before)})
+
     ordered = sorted(names)
+    source_rows = [
+        {"hostname": name, "sources": sorted(source_map.get(name, set()))}
+        for name in ordered[:max_subdomains]
+    ]
     return {
-        "ok": True,
-        "url": url,
+        "ok": bool(names) or any(item["status"] == "responded" for item in source_status),
+        "url": "https://crt.sh/",
         "subdomains": ordered[:max_subdomains],
         "total_unique_subdomains": len(ordered),
         "truncated": len(ordered) > max_subdomains,
         "issuers": sorted(issuers),
         "certificates": records,
+        "source_rows": source_rows,
+        "source_status": source_status,
+        "responded_sources": sum(item["status"] == "responded" for item in source_status),
+        "failures": failures,
     }
 
 
@@ -331,18 +490,28 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
     else:
         add_failure(result, "rdap.org", rdap.get("error", "unavailable"))
 
+    if certificates.get("source_status"):
+        result.sections.append(Section("Passive subdomain source coverage", "table", certificates["source_status"], "Union of public CT, historical DNS/URL datasets and certificate sources; a source failure never stops the scan."))
+    if certificates.get("source_rows"):
+        result.sections.append(Section("Subdomain source map", "table", certificates["source_rows"], "Each hostname is annotated with the passive sources that observed it."))
     if certificates.get("ok"):
-        result.sections.append(Section("Certificate Transparency", "table", certificates.get("certificates", []), "crt.sh certificate observations", "https://crt.sh/"))
-        result.sections.append(Section("Observed subdomains", "tags", certificates.get("subdomains", []), "Names in public CT logs; wildcard names are normalised."))
+        result.sections.append(Section("Certificate Transparency", "table", certificates.get("certificates", []), "Certificate observations from crt.sh and Cert Spotter", "https://crt.sh/"))
+        result.sections.append(Section("Observed subdomains", "tags", certificates.get("subdomains", []), "Names unioned from passive sources; wildcard names are normalised."))
         for subdomain in certificates.get("subdomains", []):
-            # CT names are valuable analyst pivots but are not automatically
-            # fanned out into dozens of follow-up requests.
-            add_entity(result, "domain", subdomain, "domain.ct", pivot=False, label="Certificate Transparency name", confidence=0.85)
+            # Passive names are valuable analyst pivots but are not
+            # automatically fanned out into dozens of follow-up requests.
+            add_entity(result, "domain", subdomain, "domain.passive", pivot=False, label="Passive subdomain observation", confidence=0.85)
         for cert in certificates.get("certificates", [])[:30]:
-            add_timeline(result, cert.get("not_before"), "Certificate first observed", "crt.sh", cert.get("common_name", ""))
-        result.coverage.update({"ct_subdomains": certificates.get("total_unique_subdomains", 0)})
+            add_timeline(result, cert.get("not_before"), "Certificate first observed", cert.get("source", "passive CT"), cert.get("common_name", ""))
+        result.coverage.update(
+            {
+                "passive_subdomains": certificates.get("total_unique_subdomains", 0),
+                "passive_sources_responded": certificates.get("responded_sources", 0),
+            }
+        )
     else:
-        add_failure(result, "crt.sh", certificates.get("error", "unavailable"))
+        failure = "; ".join(certificates.get("failures", [])) or "no passive subdomain source responded"
+        add_failure(result, "passive subdomain sources", failure)
 
     if wayback.get("ok"):
         result.sections.append(Section("Wayback availability", "kv", {key: value for key, value in wayback.items() if key not in {"ok", "url"}}, "Closest public archive snapshot", wayback.get("snapshot") or wayback.get("url", "")))
@@ -376,6 +545,7 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
             "dns_failures": dns_failures,
             "ips_found": len(ips),
             "sources_checked": 5,
+            "passive_subdomain_sources": len(certificates.get("source_status", [])),
         }
     )
     if dns_failures == len(record_types):
