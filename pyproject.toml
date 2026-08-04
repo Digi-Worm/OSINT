@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "digiscope"
+version = "1.0.0"
+description = "Passive, public-source OSINT correlation dashboard"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [{name = "Digi-Worm contributors"}]
+keywords = ["osint", "open-source-intelligence", "security", "fastapi"]
+dependencies = [
+  "fastapi>=0.110,<1",
+  "uvicorn[standard]>=0.29,<1",
+  "httpx>=0.27,<1",
+  "dnspython>=2.6,<3",
+  "phonenumbers>=8.13,<9",
+  "beautifulsoup4>=4.12,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "pytest-asyncio>=0.23,<1", "ruff>=0.5,<1"]
+
+[project.scripts]
+digiscope = "digiscope.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["digiscope*"]
+
+[tool.setuptools.package-data]
+digiscope = ["static/*", "data/*"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "E722"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"

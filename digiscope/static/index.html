@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08111f">
+  <meta name="description" content="DigiScope passive public-source OSINT dashboard">
+  <title>DigiScope · OSINT dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DigiScope home"><span class="brand-mark">◈</span><span>Digi<span class="accent">Scope</span></span><small>OPEN-SOURCE INTELLIGENCE</small></a>
+      <div class="top-actions"><span class="system-pill"><i class="pulse-dot"></i><span id="healthText">checking services</span></span><button class="icon-button" id="historyButton" title="Open scan history">▤ <span>History</span></button><a class="icon-button" href="/docs" target="_blank" rel="noreferrer">API docs ↗</a></div>
+    </header>
+
+    <main>
+      <section class="hero-section">
+        <div class="eyebrow">PASSIVE RESEARCH CONSOLE <span>·</span> MULTI-SOURCE CORRELATION</div>
+        <h1>See the <span class="gradient-text">public footprint</span><br>behind any selector.</h1>
+        <p class="hero-copy">One input. DNS, infrastructure, profiles, reputation and context — correlated into an auditable investigation graph.</p>
+        <div class="notice"><span class="notice-icon">◉</span><span><strong>Responsible use.</strong> DigiScope uses open/public sources in passive mode. Use it only for authorised research, your own footprint, threat intelligence or journalism — never for stalking, harassment, doxxing or unlawful surveillance.</span></div>
+
+        <form id="scanForm" class="search-console">
+          <div class="input-line">
+            <div class="input-wrap"><span class="input-icon">⌕</span><input id="selectorInput" autocomplete="off" spellcheck="false" placeholder="Paste an email, domain, IP, URL, phone, handle, name, hash or crypto address…" aria-label="Investigation selector"><span id="detectedBadge" class="detected-badge">AUTO-DETECT</span></div>
+            <select id="typeSelect" class="type-select" aria-label="Manual selector type"><option value="auto">Auto-detect</option><option value="email">Email</option><option value="domain">Domain</option><option value="ip">IP address</option><option value="username">Username</option><option value="phone">Phone</option><option value="person">Person plan</option><option value="url">URL</option><option value="hash">File hash</option><option value="crypto">Crypto address</option></select>
+            <button id="investigateButton" class="primary-button" type="submit"><span>Investigate</span><b>↗</b></button>
+          </div>
+          <div class="example-row"><span>Try a safe example</span><button type="button" class="example-chip" data-value="example.org">example.org</button><button type="button" class="example-chip" data-value="octocat">octocat</button><button type="button" class="example-chip" data-value="+1 202 555 0123">+1 202 555 0123</button><button type="button" class="example-chip" data-value="hello@example.org">hello@example.org</button></div>
+        </form>
+      </section>
+
+      <section class="advanced-panel" id="advancedPanel">
+        <button class="advanced-toggle" id="advancedToggle" type="button"><span class="toggle-chevron">⌄</span><span><strong>Advanced controls</strong><small>Modules · pivots · safety · source keys</small></span><span class="control-summary" id="controlSummary">9 modules · safe mode</span></button>
+        <div class="advanced-body" id="advancedBody">
+          <div class="control-column modules-column"><div class="section-kicker">SOURCE MODULES <span>select what runs</span></div><div class="module-chip-grid" id="moduleControls"><div class="skeleton-line"></div></div><div class="module-actions"><button type="button" class="text-button" id="selectAllModules">Select all</button><button type="button" class="text-button" id="selectNoModules">Clear</button></div></div>
+          <div class="control-column settings-column"><div class="section-kicker">AUTOMATION &amp; SAFETY <span>bounded per scan</span></div>
+            <div class="setting-row"><div><label for="autoPivot">Auto-pivot discovered entities</label><small>Follow safe, typed pivots into the next BFS wave.</small></div><label class="switch"><input id="autoPivot" type="checkbox" checked><span></span></label></div>
+            <div class="setting-row"><div><label for="safeMode">Safe / passive mode</label><small>Blocks local/private destinations and active scanning.</small></div><label class="switch"><input id="safeMode" type="checkbox" checked><span></span></label></div>
+            <div class="range-row"><label for="pivotDepth">Pivot depth <output id="pivotDepthValue">1 wave</output></label><input id="pivotDepth" type="range" min="0" max="3" value="1"></div>
+            <div class="range-row"><label for="concurrency">Concurrency <output id="concurrencyValue">8 tasks</output></label><input id="concurrency" type="range" min="1" max="16" value="8"></div>
+            <div class="range-row"><label for="timeout">Source timeout <output id="timeoutValue">8 sec</output></label><input id="timeout" type="range" min="2" max="30" value="8"></div>
+            <div class="range-row"><label for="maxSubdomains">Max CT names <output id="maxSubdomainsValue">100 names</output></label><input id="maxSubdomains" type="range" min="10" max="500" step="10" value="100"></div>
+            <div class="two-fields"><label>Phone region<input id="phoneRegion" value="US" maxlength="8" placeholder="US"></label><label>Person context<input id="personContext" maxlength="300" placeholder="city, company or role (optional)"></label></div>
+            <div class="setting-row"><div><label for="personAutoPivot">Opt in to person → handle probes</label><small>Off by default; name plans otherwise stay manual.</small></div><label class="switch"><input id="personAutoPivot" type="checkbox"><span></span></label></div>
+          </div>
+          <div class="control-column keys-column"><div class="section-kicker">OPTIONAL SOURCE KEYS <span>memory only · never exported</span></div><p class="muted compact">Free/keyless sources always run. Add keys only when you are authorised to use the service; values are held in process memory for this scan.</p><div class="key-grid"><label>HIBP API key<input id="hibpKey" type="password" autocomplete="off" placeholder="optional"></label><label>Shodan API key<input id="shodanKey" type="password" autocomplete="off" placeholder="optional"></label><label>AbuseIPDB key<input id="abuseKey" type="password" autocomplete="off" placeholder="optional"></label><label>VirusTotal key<input id="vtKey" type="password" autocomplete="off" placeholder="optional"></label><label>GitHub token<input id="githubToken" type="password" autocomplete="off" placeholder="optional"></label><label>Numverify key<input id="numverifyKey" type="password" autocomplete="off" placeholder="optional"></label></div></div>
+        </div>
+      </section>
+
+      <section id="scanState" class="scan-state hidden" aria-live="polite"><div class="scan-state-head"><div><span class="live-label"><i class="pulse-dot"></i> LIVE INVESTIGATION</span><strong id="phaseText">Preparing sources</strong></div><div class="progress-number" id="progressNumber">0%</div></div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div id="sourceStatuses" class="source-statuses"></div></section>
+
+      <section id="dashboard" class="dashboard hidden">
+        <div class="result-head"><div><div class="eyebrow">INVESTIGATION RESULT <span id="resultType">· DOMAIN</span></div><h2 id="resultTitle">—</h2><p id="resultMeta" class="muted">—</p></div><div class="export-actions"><button class="ghost-button" data-export="json">JSON</button><button class="ghost-button" data-export="csv">CSV</button><button class="ghost-button" data-export="md">Markdown</button><button class="ghost-button accent-button" data-export="html">HTML report</button></div></div>
+        <nav class="tab-bar" role="tablist"><button class="tab active" data-tab="overview">Overview</button><button class="tab" data-tab="modules">Modules <span id="moduleCount">0</span></button><button class="tab" data-tab="graph">Entity graph</button><button class="tab" data-tab="timeline">Timeline</button><button class="tab" data-tab="links">Links</button><button class="tab" data-tab="raw">Raw JSON</button></nav>
+        <div id="tab-overview" class="tab-panel active"><div class="overview-grid"><div class="score-card card"><div class="card-heading"><span>EXPOSURE INDEX</span><span class="info-dot" title="Weighted public exposure signals; not a vulnerability score.">i</span></div><div class="score-layout"><div id="scoreRing" class="score-ring"><div><strong id="scoreNumber">0</strong><small>/ 100</small></div></div><div><div id="scoreLabel" class="score-label">Low</div><p class="muted">Weighted findings from the sources that responded. A low score is not proof of safety.</p></div></div><div class="score-foot"><span><i class="legend-dot green"></i>0–19 low</span><span><i class="legend-dot amber"></i>20–59 elevated</span><span><i class="legend-dot red"></i>60+ high</span></div></div><div class="findings-card card"><div class="card-heading"><span>KEY FINDINGS</span><span id="findingCount" class="count-badge">0</span></div><div id="findingsList" class="findings-list"><div class="empty-state">No findings yet.</div></div></div></div><div class="metric-grid" id="metricGrid"></div><div class="pivot-strip card"><div class="card-heading"><span>CORRELATION SNAPSHOT</span><span class="muted">deduplicated graph</span></div><div id="pivotSummary" class="pivot-summary"></div></div></div>
+        <div id="tab-modules" class="tab-panel"><div class="panel-intro"><div><h3>Source modules</h3><p class="muted">Every source is isolated. Partial means a provider was unreachable or rate-limited — never silently omitted.</p></div><div id="coverageSummary" class="coverage-summary"></div></div><div id="moduleCards" class="module-cards"></div></div>
+        <div id="tab-graph" class="tab-panel"><div class="graph-toolbar"><div><h3>Entity graph</h3><p class="muted">Drag nodes · scroll to zoom · click a node for analyst pivots</p></div><div class="graph-legend" id="graphLegend"></div></div><div class="graph-wrap"><canvas id="graphCanvas"></canvas><div id="nodeInspector" class="node-inspector hidden"></div></div></div>
+        <div id="tab-timeline" class="tab-panel"><div class="panel-intro"><div><h3>Timeline</h3><p class="muted">Dates extracted from public source fields; timestamps retain source precision.</p></div><span id="timelineCount" class="count-badge">0 events</span></div><div id="timelineList" class="timeline-list"></div></div>
+        <div id="tab-links" class="tab-panel"><div class="panel-intro"><div><h3>Analyst links</h3><p class="muted">Curated pivots open the original public provider in a new tab.</p></div><span id="linkCount" class="count-badge">0 links</span></div><div id="linksList" class="links-list"></div></div>
+        <div id="tab-raw" class="tab-panel"><div class="raw-toolbar"><div><h3>Raw JSON</h3><p class="muted">Machine-readable result. Secret fields are redacted.</p></div><button id="copyRaw" class="ghost-button">Copy JSON</button></div><pre id="rawJson" class="raw-json"></pre></div>
+      </section>
+    </main>
+    <footer><span>DigiScope v1.0 · passive public-source research</span><span><a href="/docs" target="_blank" rel="noreferrer">API</a> · <a href="https://github.com/Digi-Worm/OSINT" target="_blank" rel="noreferrer">source</a></span></footer>
+  </div>
+
+  <aside id="historyDrawer" class="history-drawer" aria-hidden="true"><div class="drawer-head"><div><div class="section-kicker">RECENT WORK</div><h3>Scan history</h3></div><button id="closeHistory" class="close-button">×</button></div><div id="historyList" class="history-list"></div><p class="muted compact">History is in-memory and capped. Restarting DigiScope clears it.</p></aside><div id="drawerBackdrop" class="drawer-backdrop hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

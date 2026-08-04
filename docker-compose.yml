@@ -1,0 +1,17 @@
+services:
+  digiscope:
+    build: .
+    image: digiscope:local
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DIGISCOPE_HOST: 0.0.0.0
+      DIGISCOPE_PORT: 8000
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
