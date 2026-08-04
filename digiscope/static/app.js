@@ -70,7 +70,11 @@
       modules: q("[data-module]:checked").map((input) => input.dataset.module),
       auto_pivot: $("autoPivot").checked,
       safe_mode: $("safeMode").checked,
+      authorized_asset_crawl: $("authorizedAssetCrawl").checked,
       pivot_depth: Number($("pivotDepth").value),
+      crawl_max_pages: Number($("crawlMaxPages").value),
+      crawl_depth: Number($("crawlDepth").value),
+      crawl_delay_ms: Number($("crawlDelay").value),
       concurrency: Number($("concurrency").value),
       timeout: Number($("timeout").value),
       max_subdomains: Number($("maxSubdomains").value),
@@ -188,7 +192,7 @@
 
   function bind() {
     $("scanForm").addEventListener("submit", startScan); $("selectorInput").addEventListener("input", scheduleDetect); $("advancedToggle").addEventListener("click", () => $("advancedPanel").classList.toggle("open")); $("safeMode").addEventListener("change", updateControlSummary);
-    ["pivotDepth", "concurrency", "timeout", "maxSubdomains"].forEach((id) => $(id).addEventListener("input", () => { const labels = { pivotDepth: [`${$(id).value} wave${$(id).value === "1" ? "" : "s"}`, "pivotDepthValue"], concurrency: [`${$(id).value} tasks`, "concurrencyValue"], timeout: [`${$(id).value} sec`, "timeoutValue"], maxSubdomains: [`${$(id).value} names`, "maxSubdomainsValue"] }; $(labels[id][1]).textContent = labels[id][0]; }));
+    ["pivotDepth", "crawlMaxPages", "crawlDepth", "crawlDelay", "concurrency", "timeout", "maxSubdomains"].forEach((id) => $(id).addEventListener("input", () => { const labels = { pivotDepth: [`${$(id).value} wave${$(id).value === "1" ? "" : "s"}`, "pivotDepthValue"], crawlMaxPages: [`${$(id).value} pages`, "crawlMaxPagesValue"], crawlDepth: [`${$(id).value} level${$(id).value === "1" ? "" : "s"}`, "crawlDepthValue"], crawlDelay: [`${$(id).value} ms`, "crawlDelayValue"], concurrency: [`${$(id).value} tasks`, "concurrencyValue"], timeout: [`${$(id).value} sec`, "timeoutValue"], maxSubdomains: [`${$(id).value} names`, "maxSubdomainsValue"] }; $(labels[id][1]).textContent = labels[id][0]; }));
     $("selectAllModules").addEventListener("click", () => { q("[data-module]").forEach((input) => { input.checked = true; }); updateControlSummary(); }); $("selectNoModules").addEventListener("click", () => { q("[data-module]").forEach((input) => { input.checked = false; }); updateControlSummary(); });
     q(".example-chip").forEach((chip) => chip.addEventListener("click", () => { $("selectorInput").value = chip.dataset.value; scheduleDetect(); $("selectorInput").focus(); })); $("historyButton").addEventListener("click", openHistory); $("closeHistory").addEventListener("click", closeHistory); $("drawerBackdrop").addEventListener("click", closeHistory);
     q(".tab").forEach((tab) => tab.addEventListener("click", () => { q(".tab").forEach((item) => item.classList.toggle("active", item === tab)); q(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${tab.dataset.tab}`)); if (tab.dataset.tab === "graph") setTimeout(resizeCanvas, 30); }));

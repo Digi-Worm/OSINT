@@ -17,6 +17,7 @@ _MODULE_NAMES = (
     "url",
     "hash",
     "crypto",
+    "web",
 )
 _loaded = False
 

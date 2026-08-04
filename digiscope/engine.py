@@ -40,6 +40,10 @@ DEFAULT_OPTIONS: Dict[str, Any] = {
     "person_context": "",
     "person_auto_pivot": False,
     "person_public_discovery": True,
+    "authorized_asset_crawl": False,
+    "crawl_max_pages": 30,
+    "crawl_depth": 1,
+    "crawl_delay_ms": 250,
 }
 
 
@@ -78,6 +82,10 @@ def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "person_context": str(options.get("person_context", "") or "")[:300],
             "person_auto_pivot": bool(options.get("person_auto_pivot", False)),
             "person_public_discovery": bool(options.get("person_public_discovery", True)),
+            "authorized_asset_crawl": bool(options.get("authorized_asset_crawl", False)),
+            "crawl_max_pages": clamp(options.get("crawl_max_pages"), 5, 100, 30),
+            "crawl_depth": clamp(options.get("crawl_depth"), 0, 2, 1),
+            "crawl_delay_ms": clamp(options.get("crawl_delay_ms"), 100, 2000, 250),
         }
     )
     selected = options.get("modules", None)
@@ -156,6 +164,12 @@ class ScanEngine:
             initial = []
             if job.selector_type in REGISTRY and job.selector_type in enabled_set:
                 initial.append(ScanTask(job.selector_type, job.normalized_input, 0, "root"))
+            if (
+                options.get("authorized_asset_crawl")
+                and "web" in enabled_set
+                and job.selector_type in {"domain", "url"}
+            ):
+                initial.append(ScanTask("web", job.normalized_input, 0, "authorized-asset-crawl"))
             if not initial:
                 job.notes.append("No enabled module matches this selector. Turn on the corresponding module chip and scan again.")
             root_id = _node_id(job.selector_type, job.normalized_input)

@@ -8,7 +8,7 @@ DigiScope is a standalone, browser-first OSINT dashboard for **passive, public-s
 
 | Module | Key capabilities | Free/public sources |
 |---|---|---|
-| Domain | A/AAAA/MX/NS/TXT/SOA/CNAME/CAA/DS, SPF/DMARC/DKIM selector checks, MTA-STS, DNSSEC signal, HTTP headers/title/technology hints, RDAP, CT names/issuers, Wayback | Google Public DNS DoH, rdap.org, crt.sh, Internet Archive, target HTTP(S) |
+| Domain | A/AAAA/MX/NS/TXT/SOA/CNAME/CAA/DS, SPF/DMARC/DKIM selector checks, MTA-STS, DNSSEC signal, HTTP headers/title/technology hints, RDAP, CT names/issuers, Wayback and an explicit authorized same-host web-surface map | Google Public DNS DoH, rdap.org, crt.sh, Internet Archive, target HTTP(S), target robots/sitemaps |
 | IP | Reverse DNS, approximate geolocation/network, RIR allocation and abuse contacts, ASN/routing context, historical services/CVEs/CPEs | system DNS, ip-api.com, rdap.org, BGPView, Shodan InternetDB; full Shodan host data with an optional key |
 | Email | Syntax/role/disposable heuristics, MX, Gravatar hash/profile, public GitHub commit-email metadata, optional breach lookup | offline parser, DNS, Gravatar, GitHub; HIBP with a user-supplied key |
 | Username | Concurrent heuristic presence checks across a packaged 70+ site catalogue, coverage counts, GitHub profile/repos/blog/social enrichment | public profile URLs, GitHub API |
@@ -57,7 +57,7 @@ The image runs as a non-root user, is read-only at runtime, has a healthcheck, a
 * Auto-detection shows a confidence score and reason; the selector type can be overridden.
 * Module chips let the analyst enable/disable each source family.
 * Auto-pivot, BFS pivot depth (`0–3`), bounded concurrency, per-source timeout and CT-name cap are per-scan controls.
-* Safe/passive mode is on by default. It blocks literal/private/local destinations and DigiScope never performs an active port scan or crawling.
+* Safe/passive mode is on by default. It blocks literal/private/local destinations and DigiScope never performs active port scans, internet-wide scanning or hidden-service crawling. An explicit **Authorized same-host crawl** opt-in is available for assets you own: it obeys robots when available, uses GET only, stays on one host, skips forms/binaries/query strings, enforces a page/depth/delay budget, and stores metadata rather than page bodies. This mapper is self-hosted and keyless.
 * Phone region and person context are local scan options. Person mode can query bounded public knowledge indexes (Wikipedia, Wikidata, OpenAlex, Crossref and GitHub) as candidate-only leads; it never automatically merges or resolves a person identity.
 * HIBP, Shodan, AbuseIPDB, VirusTotal, GitHub, Numverify, Google Programmable Search and Bing Web Search keys are accepted per scan, kept in memory only, redacted from API responses/reports, and never written to disk. Google/Bing use official APIs rather than scraping search-result pages.
 * Results are available as Overview, Modules, a drag/zoom/click entity graph, Timeline, analyst Links and Raw JSON.
