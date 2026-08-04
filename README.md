@@ -13,7 +13,7 @@ DigiScope is a standalone, browser-first OSINT dashboard for **passive, public-s
 | Email | Syntax/role/disposable heuristics, MX, Gravatar hash/profile, public GitHub commit-email metadata, optional breach lookup | offline parser, DNS, Gravatar, GitHub; HIBP with a user-supplied key |
 | Username | Concurrent heuristic presence checks across a packaged 70+ site catalogue, coverage counts, GitHub profile/repos/blog/social enrichment | public profile URLs, GitHub API |
 | Phone | Offline validity/possibility, carrier/region/timezone hints, E.164/international/national/RFC3966 formats, curated lookup links | libphonenumber metadata; Numverify optional |
-| Person | Dork/search plan for general, social, professional, image, documents and public-sector queries; probable handle permutations | links to Google, Bing, DuckDuckGo, LinkedIn, GitHub and image search |
+| Person | Dork/search plan for general, social, professional, image, documents and public-sector queries; bounded public-index discovery; probable handle permutations | Google/Bing/DuckDuckGo links, Wikipedia, Wikidata, OpenAlex, Crossref, GitHub API, LinkedIn and image search |
 | URL | Scheme/host/path/query-key breakdown, bounded five-hop redirect chain, status/title/headers, host pivot | target HTTP(S) |
 | Hash | MD5/SHA-1/SHA-256/SHA-512 identification, optional VirusTotal, MalwareBazaar and analyst pivots | offline checks, MalwareBazaar, VirusTotal optional key |
 | Crypto | Bitcoin balance/transaction context, optional Ethereum dashboard, explorer links | Blockchain.com, Blockchair, Etherscan |
@@ -58,7 +58,7 @@ The image runs as a non-root user, is read-only at runtime, has a healthcheck, a
 * Module chips let the analyst enable/disable each source family.
 * Auto-pivot, BFS pivot depth (`0–3`), bounded concurrency, per-source timeout and CT-name cap are per-scan controls.
 * Safe/passive mode is on by default. It blocks literal/private/local destinations and DigiScope never performs an active port scan or crawling.
-* Phone region and person context are local scan options.
+* Phone region and person context are local scan options. Person mode can query bounded public knowledge indexes (Wikipedia, Wikidata, OpenAlex, Crossref and GitHub) as candidate-only leads; it never automatically merges or resolves a person identity.
 * HIBP, Shodan, AbuseIPDB, VirusTotal, GitHub and Numverify keys are accepted per scan, kept in memory only, redacted from API responses/reports, and never written to disk.
 * Results are available as Overview, Modules, a drag/zoom/click entity graph, Timeline, analyst Links and Raw JSON.
 * JSON, CSV, Markdown and self-contained HTML exports are generated server-side.
@@ -124,6 +124,7 @@ The public interfaces and data semantics used during implementation are based on
 * [Shodan InternetDB](https://internetdb.shodan.io/) for a keyless, passive IP snapshot of ports, CPEs, hostnames, tags and CVE identifiers.
 * [Certificate Transparency](https://www.rfc-editor.org/rfc/rfc6962) and the public [crt.sh](https://crt.sh/) search endpoint for logged certificate names.
 * [GitHub REST API](https://docs.github.com/en/rest), [Gravatar](https://gravatar.com/site/implement/profiles/), [Have I Been Pwned API](https://haveibeenpwned.com/API/v3) and [libphonenumber](https://github.com/google/libphonenumber) for the identity modules.
+* [Wikipedia REST API](https://en.wikipedia.org/api/rest_v1/), [Wikidata API](https://www.wikidata.org/w/api.php), [OpenAlex](https://docs.openalex.org/), [Crossref REST API](https://api.crossref.org/) and GitHub user search for candidate-only person-name discovery. Search pages are not scraped and candidates are never auto-merged into an identity.
 * [Internet Archive Availability API](https://archive.org/developers/wayback-cdx-server.html), [BGPView](https://bgpview.io/), [ip-api](https://ip-api.com/docs/), [Blockchain.com](https://www.blockchain.com/api) and [Blockchair](https://blockchair.com/api/docs) for public enrichment.
 
 Providers can rate-limit, change formats or be unavailable from a particular network. DigiScope reports the observed state and does not treat a missing result as proof of absence.

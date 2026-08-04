@@ -36,6 +36,7 @@ DEFAULT_OPTIONS: Dict[str, Any] = {
     "phone_region": "US",
     "person_context": "",
     "person_auto_pivot": False,
+    "person_public_discovery": True,
 }
 
 
@@ -73,6 +74,7 @@ def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "phone_region": str(options.get("phone_region", "US") or "US").upper()[:8],
             "person_context": str(options.get("person_context", "") or "")[:300],
             "person_auto_pivot": bool(options.get("person_auto_pivot", False)),
+            "person_public_discovery": bool(options.get("person_public_discovery", True)),
         }
     )
     selected = options.get("modules", None)

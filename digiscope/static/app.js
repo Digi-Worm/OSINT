@@ -77,6 +77,7 @@
       phone_region: $("phoneRegion").value.trim().toUpperCase() || "US",
       person_context: $("personContext").value.trim(),
       person_auto_pivot: $("personAutoPivot").checked,
+      person_public_discovery: $("personPublicDiscovery").checked,
       ...keys,
     };
   }
