@@ -59,7 +59,7 @@ The image runs as a non-root user, is read-only at runtime, has a healthcheck, a
 * Auto-pivot, BFS pivot depth (`0–3`), bounded concurrency, per-source timeout and CT-name cap are per-scan controls.
 * Safe/passive mode is on by default. It blocks literal/private/local destinations and DigiScope never performs an active port scan or crawling.
 * Phone region and person context are local scan options. Person mode can query bounded public knowledge indexes (Wikipedia, Wikidata, OpenAlex, Crossref and GitHub) as candidate-only leads; it never automatically merges or resolves a person identity.
-* HIBP, Shodan, AbuseIPDB, VirusTotal, GitHub and Numverify keys are accepted per scan, kept in memory only, redacted from API responses/reports, and never written to disk.
+* HIBP, Shodan, AbuseIPDB, VirusTotal, GitHub, Numverify, Google Programmable Search and Bing Web Search keys are accepted per scan, kept in memory only, redacted from API responses/reports, and never written to disk. Google/Bing use official APIs rather than scraping search-result pages.
 * Results are available as Overview, Modules, a drag/zoom/click entity graph, Timeline, analyst Links and Raw JSON.
 * JSON, CSV, Markdown and self-contained HTML exports are generated server-side.
 

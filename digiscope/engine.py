@@ -24,6 +24,9 @@ SECRET_OPTIONS = (
     "virustotal_api_key",
     "github_token",
     "numverify_api_key",
+    "google_cse_api_key",
+    "google_cse_cx",
+    "bing_search_api_key",
 )
 DEFAULT_OPTIONS: Dict[str, Any] = {
     "modules": None,

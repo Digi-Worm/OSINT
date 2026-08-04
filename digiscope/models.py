@@ -164,6 +164,9 @@ class Job:
             "virustotal_api_key",
             "github_token",
             "numverify_api_key",
+            "google_cse_api_key",
+            "google_cse_cx",
+            "bing_search_api_key",
         }
         for key, value in self.options.items():
             redacted[key] = "••••••••" if key in secret_names and value else value

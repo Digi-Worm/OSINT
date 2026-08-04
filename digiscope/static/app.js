@@ -65,7 +65,7 @@
   }
 
   function readOptions() {
-    const keys = { hibp_api_key: $("hibpKey").value, shodan_api_key: $("shodanKey").value, abuseipdb_api_key: $("abuseKey").value, virustotal_api_key: $("vtKey").value, github_token: $("githubToken").value, numverify_api_key: $("numverifyKey").value };
+    const keys = { hibp_api_key: $("hibpKey").value, shodan_api_key: $("shodanKey").value, abuseipdb_api_key: $("abuseKey").value, virustotal_api_key: $("vtKey").value, github_token: $("githubToken").value, numverify_api_key: $("numverifyKey").value, google_cse_api_key: $("googleCseKey").value, google_cse_cx: $("googleCseCx").value, bing_search_api_key: $("bingKey").value };
     return {
       modules: q("[data-module]:checked").map((input) => input.dataset.module),
       auto_pivot: $("autoPivot").checked,

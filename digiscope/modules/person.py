@@ -73,7 +73,7 @@ async def _public_index_discovery(ctx: ScanContext, name: str) -> Dict[str, Any]
     accounts automatically because a common name can match unrelated people.
     """
 
-    responses = await asyncio.gather(
+    base_responses = await asyncio.gather(
         ctx.fetcher.get_json(
             "https://en.wikipedia.org/w/rest.php/v1/search/page",
             params={"q": name, "limit": 5},
@@ -107,6 +107,42 @@ async def _public_index_discovery(ctx: ScanContext, name: str) -> Dict[str, Any]
             max_bytes=500_000,
         ),
     )
+    optional_requests = []
+    optional_labels: List[str] = []
+    optional_skipped: List[str] = []
+    search_query = f'"{name}"'
+    if ctx.key("person_context", ""):
+        search_query += " " + str(ctx.key("person_context"))[:200]
+    google_key = ctx.api_key("google_cse_api_key")
+    google_cx = ctx.api_key("google_cse_cx")
+    if google_key and google_cx:
+        optional_labels.append("Google CSE")
+        optional_requests.append(
+            ctx.fetcher.get_json(
+                "https://www.googleapis.com/customsearch/v1",
+                params={"key": google_key, "cx": google_cx, "q": search_query, "num": 10},
+                source="Google Programmable Search API",
+                max_bytes=1_000_000,
+            )
+        )
+    else:
+        optional_skipped.append("Google CSE (API key + search engine ID not configured)")
+    bing_key = ctx.api_key("bing_search_api_key")
+    if bing_key:
+        optional_labels.append("Bing Web Search")
+        optional_requests.append(
+            ctx.fetcher.get_json(
+                "https://api.bing.microsoft.com/v7.0/search",
+                params={"q": search_query, "count": 10, "responseFilter": "Webpages"},
+                headers={"Ocp-Apim-Subscription-Key": bing_key},
+                source="Bing Web Search API",
+                max_bytes=1_000_000,
+            )
+        )
+    else:
+        optional_skipped.append("Bing Web Search API (subscription key not configured)")
+    optional_responses = await asyncio.gather(*optional_requests) if optional_requests else []
+    responses = list(base_responses) + list(optional_responses)
     records: List[Dict[str, str]] = []
     failures: List[str] = []
     empty_sources: List[str] = []
@@ -200,7 +236,36 @@ async def _public_index_discovery(ctx: ScanContext, name: str) -> Dict[str, Any]
     else:
         failures.append(f"GitHub: {github.error or f'HTTP {github.status}'}")
 
-    return {"records": records[:40], "responded": responded, "attempted": len(responses), "failures": failures, "empty_sources": empty_sources}
+    for label, response in zip(optional_labels, optional_responses):
+        if not response.ok or not isinstance(response.data, dict):
+            failures.append(f"{label}: {response.error or f'HTTP {response.status}'}")
+            continue
+        responded += 1
+        if label == "Google CSE":
+            items = response.data.get("items", []) or []
+            if not items:
+                empty_sources.append(label)
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                records.append(_record(label, name, str(item.get("title", "")), str(item.get("snippet", "")), str(item.get("link", ""))))
+        else:
+            items = (response.data.get("webPages", {}) or {}).get("value", []) or []
+            if not items:
+                empty_sources.append(label)
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                records.append(_record(label, name, str(item.get("name", "")), str(item.get("snippet", "")), str(item.get("url", ""))))
+
+    return {
+        "records": records[:60],
+        "responded": responded,
+        "attempted": len(responses),
+        "failures": failures,
+        "empty_sources": empty_sources,
+        "optional_skipped": optional_skipped,
+    }
 
 
 @register(
@@ -208,7 +273,7 @@ async def _public_index_discovery(ctx: ScanContext, name: str) -> Dict[str, Any]
     "Person research plan",
     "Curated public-search dorks, candidate-only public-index discovery, image/social/professional pivots and username permutations; no automatic identity resolution.",
     category="planning",
-    sources=["Google", "Bing", "DuckDuckGo", "Wikipedia", "Wikidata", "OpenAlex", "Crossref", "GitHub API"],
+    sources=["Google/Bing links", "Google CSE (optional key)", "Bing Web Search (optional key)", "Wikipedia", "Wikidata", "OpenAlex", "Crossref", "GitHub API"],
 )
 async def run_person(ctx: ScanContext, target: str) -> Any:
     name = " ".join(target.strip().split())
@@ -221,7 +286,7 @@ async def run_person(ctx: ScanContext, target: str) -> Any:
 
     queries = _query_links(name, context)
     permutations = _username_permutations(name)
-    discovery = {"records": [], "responded": 0, "attempted": 0, "failures": [], "empty_sources": []}
+    discovery = {"records": [], "responded": 0, "attempted": 0, "failures": [], "empty_sources": [], "optional_skipped": []}
     if ctx.key("person_public_discovery", True):
         discovery = await _public_index_discovery(ctx, name)
         result.sections.append(
@@ -232,6 +297,7 @@ async def run_person(ctx: ScanContext, target: str) -> Any:
                     "providers_attempted": discovery["attempted"],
                     "providers_responded": discovery["responded"],
                     "providers_with_no_candidates": discovery["empty_sources"],
+                    "optional_search_apis_skipped": discovery["optional_skipped"],
                     "candidate_records": len(discovery["records"]),
                     "method": "Bounded documented public APIs; search-engine result pages are not scraped.",
                 },
@@ -302,6 +368,7 @@ async def run_person(ctx: ScanContext, target: str) -> Any:
             "public_index_providers": discovery["attempted"],
             "public_index_records": len(discovery["records"]),
             "public_index_empty_sources": discovery["empty_sources"],
+            "optional_search_apis_skipped": discovery["optional_skipped"],
         }
     )
     return result
