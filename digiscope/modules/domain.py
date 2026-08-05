@@ -615,12 +615,16 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
         add_entity(result, "domain", cname, "domain.cname", pivot=False, label="CNAME target")
 
     txt_values = answers.get("TXT").values if answers.get("TXT") else []
-    public_emails = sorted({match.lower() for value in txt_values for match in re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", value, flags=re.I) if match.lower().endswith(f"@{domain}")})
-    for public_email in public_emails:
-        add_entity(result, "email", public_email, "domain.dns.txt", pivot=True, label="Public email in DNS TXT", confidence=0.95)
     spf = [value for value in txt_values if value.lower().startswith("v=spf1")]
     dmarc_answer = await ctx.dns.query(f"_dmarc.{domain}", "TXT")
     dmarc = dmarc_answer.values
+    public_emails = sorted({
+        match.lower()
+        for value in [*txt_values, *dmarc]
+        for match in re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", value, flags=re.I)
+    })
+    for public_email in public_emails:
+        add_entity(result, "email", public_email, "domain.dns.txt", pivot=True, label="Public email in DNS TXT/DMARC", confidence=0.95)
     dkim_answers = await asyncio.gather(
         *(ctx.dns.query(f"{selector}._domainkey.{domain}", "TXT") for selector in DKIM_SELECTORS)
     )
