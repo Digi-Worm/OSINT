@@ -46,6 +46,10 @@ DEFAULT_OPTIONS: Dict[str, Any] = {
     "crawl_depth": 1,
     "crawl_delay_ms": 250,
     "resolve_subdomains": True,
+    "authorized_dns_enum": False,
+    "dns_enum_max": 1000,
+    "dns_enum_delay_ms": 100,
+    "dns_wordlist": "",
     "remote_site_catalog": True,
     "max_username_sites": 300,
 }
@@ -92,6 +96,10 @@ def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "crawl_depth": clamp(options.get("crawl_depth"), 0, 2, 1),
             "crawl_delay_ms": clamp(options.get("crawl_delay_ms"), 100, 2000, 250),
             "resolve_subdomains": bool(options.get("resolve_subdomains", True)),
+            "authorized_dns_enum": bool(options.get("authorized_dns_enum", False)),
+            "dns_enum_max": clamp(options.get("dns_enum_max"), 100, 5000, 1000),
+            "dns_enum_delay_ms": clamp(options.get("dns_enum_delay_ms"), 50, 1000, 100),
+            "dns_wordlist": str(options.get("dns_wordlist", "") or "")[:100_000],
             "remote_site_catalog": bool(options.get("remote_site_catalog", True)),
             "max_username_sites": clamp(options.get("max_username_sites"), 50, 500, 300),
         }

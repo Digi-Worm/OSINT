@@ -14,7 +14,7 @@ Do not use DigiScope to stalk, harass, doxx, deanonymise, profile or surveil peo
 ## Technical boundaries
 
 * Safe/passive mode is the default. It rejects literal private/local destinations and embedded URL credentials.
-* DigiScope does not perform active port scans, internet-wide scanning, credential attacks, brute force, exploit delivery, CAPTCHA bypass, search-engine scraping, hidden-service crawling or access-control evasion. The opt-in asset mapper is strictly same-host, GET-only and budgeted for authorized assets.
+* DigiScope does not perform active port scans, internet-wide scanning, credential attacks, exploit delivery, CAPTCHA bypass, search-engine scraping, hidden-service crawling or access-control evasion. The opt-in asset mapper is strictly same-host, GET-only and budgeted for authorized assets. DNS wordlist verification is also opt-in, rate-limited and intended only for domains you own or have written permission to assess.
 * Shodan InternetDB and other provider results are historical/public snapshots; they are not active observations by DigiScope.
 * Person mode creates search links and candidate handles only. Automatic identity resolution is intentionally not implemented.
 * Username checks are bounded public URL probes with a catalogue, status/missing-page heuristics and explicit inconclusive states. Respect provider terms, robots/rate limits and applicable law.

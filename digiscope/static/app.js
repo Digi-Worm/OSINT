@@ -77,6 +77,10 @@
       crawl_depth: Number($("crawlDepth").value),
       crawl_delay_ms: Number($("crawlDelay").value),
       resolve_subdomains: $("resolveSubdomains").checked,
+      authorized_dns_enum: $("authorizedDnsEnum").checked,
+      dns_enum_max: Number($("dnsEnumMax").value),
+      dns_enum_delay_ms: Number($("dnsEnumDelay").value),
+      dns_wordlist: $("dnsWordlist").value,
       remote_site_catalog: $("remoteSiteCatalog").checked,
       max_username_sites: Number($("maxUsernameSites").value),
       concurrency: Number($("concurrency").value),
@@ -196,7 +200,7 @@
 
   function bind() {
     $("scanForm").addEventListener("submit", startScan); $("selectorInput").addEventListener("input", scheduleDetect); $("advancedToggle").addEventListener("click", () => $("advancedPanel").classList.toggle("open")); $("safeMode").addEventListener("change", updateControlSummary);
-    ["pivotDepth", "crawlMaxPages", "crawlDepth", "crawlDelay", "maxUsernameSites", "concurrency", "timeout", "maxSubdomains"].forEach((id) => $(id).addEventListener("input", () => { const labels = { pivotDepth: [`${$(id).value} wave${$(id).value === "1" ? "" : "s"}`, "pivotDepthValue"], crawlMaxPages: [`${$(id).value} pages`, "crawlMaxPagesValue"], crawlDepth: [`${$(id).value} level${$(id).value === "1" ? "" : "s"}`, "crawlDepthValue"], crawlDelay: [`${$(id).value} ms`, "crawlDelayValue"], maxUsernameSites: [`${$(id).value} sites`, "maxUsernameSitesValue"], concurrency: [`${$(id).value} tasks`, "concurrencyValue"], timeout: [`${$(id).value} sec`, "timeoutValue"], maxSubdomains: [`${$(id).value} names`, "maxSubdomainsValue"] }; $(labels[id][1]).textContent = labels[id][0]; }));
+    ["pivotDepth", "crawlMaxPages", "crawlDepth", "crawlDelay", "dnsEnumMax", "dnsEnumDelay", "maxUsernameSites", "concurrency", "timeout", "maxSubdomains"].forEach((id) => $(id).addEventListener("input", () => { const labels = { pivotDepth: [`${$(id).value} wave${$(id).value === "1" ? "" : "s"}`, "pivotDepthValue"], crawlMaxPages: [`${$(id).value} pages`, "crawlMaxPagesValue"], crawlDepth: [`${$(id).value} level${$(id).value === "1" ? "" : "s"}`, "crawlDepthValue"], crawlDelay: [`${$(id).value} ms`, "crawlDelayValue"], dnsEnumMax: [`${Number($(id).value).toLocaleString()} names`, "dnsEnumMaxValue"], dnsEnumDelay: [`${$(id).value} ms`, "dnsEnumDelayValue"], maxUsernameSites: [`${$(id).value} sites`, "maxUsernameSitesValue"], concurrency: [`${$(id).value} tasks`, "concurrencyValue"], timeout: [`${$(id).value} sec`, "timeoutValue"], maxSubdomains: [`${$(id).value} names`, "maxSubdomainsValue"] }; $(labels[id][1]).textContent = labels[id][0]; }));
     $("selectAllModules").addEventListener("click", () => { q("[data-module]").forEach((input) => { input.checked = true; }); updateControlSummary(); }); $("selectNoModules").addEventListener("click", () => { q("[data-module]").forEach((input) => { input.checked = false; }); updateControlSummary(); });
     q(".example-chip").forEach((chip) => chip.addEventListener("click", () => { $("selectorInput").value = chip.dataset.value; scheduleDetect(); $("selectorInput").focus(); })); $("historyButton").addEventListener("click", openHistory); $("closeHistory").addEventListener("click", closeHistory); $("drawerBackdrop").addEventListener("click", closeHistory);
     q(".tab").forEach((tab) => tab.addEventListener("click", () => { q(".tab").forEach((item) => item.classList.toggle("active", item === tab)); q(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${tab.dataset.tab}`)); if (tab.dataset.tab === "graph") setTimeout(resizeCanvas, 30); }));

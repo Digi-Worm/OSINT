@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import quote, urlsplit
 
@@ -528,6 +529,79 @@ async def _wildcard_dns(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     }
 
 
+async def _dns_wordlist_enumeration(ctx: ScanContext, domain: str, wildcard: Dict[str, Any]) -> Dict[str, Any]:
+    """Explicit, rate-limited DNS label verification for authorized domains."""
+
+    if not ctx.key("authorized_dns_enum", False):
+        return {"enabled": False, "checked": 0, "found": [], "note": "Authorized DNS wordlist enumeration is disabled."}
+    raw = str(ctx.key("dns_wordlist", "") or "")
+    if raw.strip():
+        labels = re.split(r"[\s,;]+", raw)
+    else:
+        wordlist_path = Path(__file__).resolve().parent.parent / "data" / "subdomains.txt"
+        try:
+            labels = wordlist_path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            return {"enabled": True, "checked": 0, "found": [], "note": f"Bundled wordlist unavailable: {exc}"}
+    clean = []
+    seen = set()
+    for label in labels:
+        label = label.strip().lower()
+        if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) or label in seen:
+            continue
+        seen.add(label)
+        clean.append(label)
+        if len(clean) >= max(100, min(int(ctx.key("dns_enum_max", 1000)), 5000)):
+            break
+    delay = max(0.05, min(float(ctx.key("dns_enum_delay_ms", 100)) / 1000.0, 1.0))
+    limiter = asyncio.Semaphore(max(1, min(int(ctx.key("concurrency", 8)), 16)))
+    rate_lock = asyncio.Lock()
+    next_allowed = 0.0
+    wildcard_addresses = set(wildcard.get("addresses", []) or [])
+    found: List[Dict[str, Any]] = []
+    wildcard_filtered = 0
+    errors = 0
+
+    async def probe(label: str) -> None:
+        nonlocal next_allowed, wildcard_filtered, errors
+        async with rate_lock:
+            now = asyncio.get_running_loop().time()
+            wait = max(0.0, next_allowed - now)
+            next_allowed = max(now, next_allowed) + delay
+        if wait:
+            await asyncio.sleep(wait)
+        name = f"{label}.{domain}"
+        async with limiter:
+            answers = await ctx.dns.query_many(name, ["A", "AAAA", "CNAME"])
+        values = dedupe_strings([value for answer in answers for value in answer.values])
+        errors += sum(bool(answer.error) for answer in answers)
+        if not values:
+            return
+        if wildcard_addresses and wildcard_addresses.intersection(values):
+            wildcard_filtered += 1
+            return
+        found.append(
+            {
+                "hostname": name,
+                "values": values,
+                "record_types": [answer.record_type for answer in answers if answer.values],
+                "resolver": ", ".join(dedupe_strings([answer.source for answer in answers if answer.source])),
+            }
+        )
+
+    await asyncio.gather(*(probe(label) for label in clean))
+    found.sort(key=lambda row: row["hostname"])
+    return {
+        "enabled": True,
+        "wordlist_source": "custom per-scan list" if raw.strip() else "bundled 1,200-label list",
+        "checked": len(clean),
+        "found": found[:500],
+        "wildcard_filtered": wildcard_filtered,
+        "dns_errors": errors,
+        "delay_ms": int(delay * 1000),
+    }
+
+
 async def _wayback(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     url = "https://archive.org/wayback/available"
     response = await ctx.fetcher.get_json(
@@ -574,6 +648,7 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
         _resolve_passive_hosts(ctx, certificates.get("subdomains", [])),
         _wildcard_dns(ctx, domain),
     )
+    wordlist_enum = await _dns_wordlist_enumeration(ctx, domain, wildcard)
 
     dns_rows = []
     answers: Dict[str, Any] = {}
@@ -698,6 +773,12 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
 
     result.sections.append(Section("Resolved passive hosts", "table", resolved_hosts, "A/AAAA lookups for observed names only; no ports or web probes are performed."))
     result.sections.append(Section("Wildcard DNS detection", "kv", wildcard, "A random-label DNS probe helps distinguish wildcard answers from concrete subdomains."))
+    result.sections.append(Section("Authorized DNS wordlist enumeration", "kv", {key: value for key, value in wordlist_enum.items() if key != "found"}, "Disabled by default. Enable only for a domain you own or are explicitly authorized to assess."))
+    result.sections.append(Section("Wordlist DNS hits", "table", wordlist_enum.get("found", []), "A/AAAA/CNAME answers only; this does not prove that a web service is present."))
+    for hit in wordlist_enum.get("found", []):
+        add_entity(result, "domain", hit["hostname"], "domain.dns_wordlist", pivot=False, label="Authorized DNS wordlist hit", confidence=0.9)
+        for address in hit.get("values", []):
+            add_entity(result, "ip", address, "domain.dns_wordlist", pivot=False, label=f"Address for {hit['hostname']}", confidence=0.9)
     for host_row in resolved_hosts:
         for address in host_row.get("addresses", []):
             add_entity(result, "ip", address, "domain.subdomain_dns", pivot=False, label=f"Address for {host_row['hostname']}", confidence=0.9)
@@ -756,6 +837,9 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
             "passive_subdomain_sources": len(certificates.get("source_status", [])),
             "resolved_passive_hosts": sum(row.get("status") == "resolved" for row in resolved_hosts),
             "wildcard_dns_observed": wildcard.get("wildcard_observed", False),
+            "authorized_dns_enum": wordlist_enum.get("enabled", False),
+            "dns_wordlist_checked": wordlist_enum.get("checked", 0),
+            "dns_wordlist_hits": len(wordlist_enum.get("found", [])),
         }
     )
     if dns_failures == len(record_types):
