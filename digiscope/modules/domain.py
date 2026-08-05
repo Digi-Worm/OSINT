@@ -538,6 +538,9 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
         add_entity(result, "domain", cname, "domain.cname", pivot=False, label="CNAME target")
 
     txt_values = answers.get("TXT").values if answers.get("TXT") else []
+    public_emails = sorted({match.lower() for value in txt_values for match in re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", value, flags=re.I) if match.lower().endswith(f"@{domain}")})
+    for public_email in public_emails:
+        add_entity(result, "email", public_email, "domain.dns.txt", pivot=True, label="Public email in DNS TXT", confidence=0.95)
     spf = [value for value in txt_values if value.lower().startswith("v=spf1")]
     dmarc_answer = await ctx.dns.query(f"_dmarc.{domain}", "TXT")
     dmarc = dmarc_answer.values
@@ -556,6 +559,7 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
     )
     security_data = {
         "SPF": spf or "Not observed",
+        "Public emails in DNS TXT": public_emails or "None observed",
         "DMARC": dmarc or "Not observed",
         "DKIM selectors found": dkim_found or "No common selector observed",
         "MTA-STS": mta_sts.text.strip()[:2_000] if mta_sts.ok else "Not observed",
@@ -666,6 +670,7 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
             "dns_records_checked": len(record_types),
             "dns_failures": dns_failures,
             "ips_found": len(ips),
+            "public_dns_emails": len(public_emails),
             "sources_checked": 5,
             "passive_subdomain_sources": len(certificates.get("source_status", [])),
             "resolved_passive_hosts": sum(row.get("status") == "resolved" for row in resolved_hosts),

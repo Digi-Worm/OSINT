@@ -15,9 +15,10 @@ def _domain(value: str) -> str:
     if "://" not in candidate:
         candidate = f"https://{candidate}"
     try:
-        return (urlsplit(candidate).hostname or "").lower().rstrip(".")
+        host = (urlsplit(candidate).hostname or "").lower().rstrip(".")
     except ValueError:
         return ""
+    return host if "." in host else ""
 
 
 def _record(source: str, title: str, summary: str, url: str) -> Dict[str, str]:
@@ -37,18 +38,24 @@ async def _github_orgs(ctx: ScanContext, name: str) -> Dict[str, Any]:
         max_bytes=500_000,
     )
     if not response.ok or not isinstance(response.data, dict):
-        return {"ok": False, "error": response.error or f"HTTP {response.status}", "orgs": [], "members": []}
+        return {"ok": False, "error": response.error or f"HTTP {response.status}", "orgs": [], "members": [], "user_candidates": []}
     orgs = []
     members = []
-    for item in (response.data.get("items", []) or [])[:5]:
+    user_candidates = []
+    for item in (response.data.get("items", []) or [])[:10]:
         if not isinstance(item, dict) or not item.get("login"):
             continue
         login = str(item["login"])
+        if str(item.get("type", "User")).lower() != "organization":
+            user_candidates.append({"login": login, "type": item.get("type", "User"), "url": item.get("html_url", ""), "score": item.get("score", "")})
+            continue
         org_response, members_response = await asyncio.gather(
             ctx.fetcher.get_json(f"https://api.github.com/orgs/{quote(login, safe='')}", headers=headers, source="GitHub organization profile", max_bytes=400_000),
             ctx.fetcher.get_json(f"https://api.github.com/orgs/{quote(login, safe='')}/members", params={"per_page": 30}, headers=headers, source="GitHub public organization members", max_bytes=700_000),
         )
-        profile = org_response.data if org_response.ok and isinstance(org_response.data, dict) else {}
+        if not org_response.ok or not isinstance(org_response.data, dict):
+            continue
+        profile = org_response.data
         orgs.append(
             {
                 "login": login,
@@ -65,7 +72,7 @@ async def _github_orgs(ctx: ScanContext, name: str) -> Dict[str, Any]:
             for member in members_response.data[:30]:
                 if isinstance(member, dict) and member.get("login"):
                     members.append({"organization": login, "login": member["login"], "profile": member.get("html_url", ""), "type": member.get("type", "User")})
-    return {"ok": True, "orgs": orgs, "members": members}
+    return {"ok": True, "orgs": orgs, "members": members, "user_candidates": user_candidates}
 
 
 async def _public_indexes(ctx: ScanContext, name: str) -> Dict[str, Any]:
@@ -161,7 +168,12 @@ async def run_company(ctx: ScanContext, target: str) -> Any:
 
     if github.get("ok"):
         result.sections.append(Section("GitHub organization candidates", "table", github.get("orgs", []), "Public GitHub organization records; not proof of corporate ownership."))
+        result.sections.append(Section("GitHub name-search candidates", "table", github.get("user_candidates", []), "Public GitHub search candidates; not evidence of employment or identity."))
         result.sections.append(Section("Public GitHub organization members", "table", github.get("members", []), "Only public GitHub member listings; not a complete employee directory."))
+        for candidate in github.get("user_candidates", [])[:20]:
+            add_entity(result, "username", candidate.get("login"), "github.name_search", pivot=False, label="Public GitHub name candidate", confidence=0.3)
+            if candidate.get("url"):
+                add_link(result, f"GitHub name candidate · {candidate['login']}", candidate["url"], "candidate", "GitHub")
         for org in github.get("orgs", []):
             add_entity(result, "username", org.get("login"), "github.organization", pivot=False, label="Public GitHub organization", confidence=0.65)
             if org.get("url"):
@@ -186,7 +198,7 @@ async def run_company(ctx: ScanContext, target: str) -> Any:
     add_link(result, "Crunchbase company search", f"https://www.crunchbase.com/search-home/organizations/field/organizations/short_description/{encoded}", "company", "Crunchbase")
     add_link(result, "OpenCorporates search", f"https://opencorporates.com/companies?q={encoded}", "registry", "OpenCorporates")
     add_finding(result, "Company results require ownership verification", "info", 0, "Public organization records, maps and employee links are leads, not proof that all records refer to the same company.", "DigiScope")
-    result.coverage.update({"index_records": len(indexes["records"]), "github_orgs": len(github.get("orgs", [])), "public_github_members": len(github.get("members", [])), "links": len(result.links)})
+    result.coverage.update({"index_records": len(indexes["records"]), "github_orgs": len(github.get("orgs", [])), "github_name_candidates": len(github.get("user_candidates", [])), "public_github_members": len(github.get("members", [])), "links": len(result.links)})
     return result
 
 
