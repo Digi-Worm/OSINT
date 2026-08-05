@@ -74,12 +74,22 @@ def _normalise_url(value: str, host: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
-def _title_and_links(text: str, current_url: str, host: str) -> Tuple[str, List[str]]:
+def _title_and_links(text: str, current_url: str, host: str) -> Tuple[str, List[str], List[Dict[str, str]]]:
     try:
         soup = BeautifulSoup(text[:350_000], "html.parser")
     except Exception:
-        return "", []
+        return "", [], []
     title = soup.title.get_text(" ", strip=True)[:240] if soup.title else ""
+    contacts: List[Dict[str, str]] = []
+    if re.fullmatch(r"https?://[^/]+", current_url) or current_url:
+        emails = set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, flags=re.I))
+        phones = set()
+        for value in re.findall(r"(?<!\d)\+?\d[\d\s().-]{7,}\d(?!\d)", text):
+            digits = re.sub(r"\D", "", value)
+            if 7 <= len(digits) <= 15:
+                phones.add(" ".join(value.split()))
+        contacts.extend({"kind": "email", "value": value[:240]} for value in sorted(emails)[:30])
+        contacts.extend({"kind": "phone", "value": value[:80]} for value in sorted(phones)[:20])
     links: List[str] = []
     for anchor in soup.find_all("a", href=True):
         href = str(anchor.get("href", "")).strip()
@@ -90,7 +100,7 @@ def _title_and_links(text: str, current_url: str, host: str) -> Tuple[str, List[
             links.append(candidate)
         if len(links) >= 80:
             break
-    return title, links
+    return title, links, contacts
 
 
 def _sitemap_locations(text: str, host: str) -> List[str]:
@@ -171,6 +181,7 @@ async def run_web(ctx: ScanContext, target: str) -> ModuleResult:
     seen: Set[str] = set()
     pages: List[Dict[str, Any]] = []
     link_edges: List[Dict[str, str]] = []
+    contact_signals: List[Dict[str, str]] = []
     skipped_robots = 0
     last_request = 0.0
 
@@ -201,9 +212,16 @@ async def run_web(ctx: ScanContext, target: str) -> ModuleResult:
             "error": response.error,
         }
         if response.ok and "html" in response.content_type.lower():
-            title, links = _title_and_links(response.text, current, host)
+            title, links, page_contacts = _title_and_links(response.text, current, host)
+            if not ctx.key("collect_public_contacts", True):
+                page_contacts = []
             row["title"] = title
             row["outlinks"] = len(links)
+            row["public_contacts"] = page_contacts
+            for contact in page_contacts:
+                contact_row = {"kind": contact["kind"], "value": contact["value"], "page": current}
+                if not any(item["kind"] == contact_row["kind"] and item["value"] == contact_row["value"] and item["page"] == current for item in contact_signals):
+                    contact_signals.append(contact_row)
             for link in links:
                 link_edges.append({"source": current, "target": link})
                 if depth < max_depth and link not in queued and len(queued) < max_pages * 5:
@@ -231,12 +249,16 @@ async def run_web(ctx: ScanContext, target: str) -> ModuleResult:
                 "max_depth": max_depth,
                 "delay_seconds": delay,
                 "method": "GET only; same host; no forms, authentication, query strings or binary assets.",
+                "public_contact_extraction": bool(ctx.key("collect_public_contacts", True)),
             },
             "Page bodies are not stored in the result; only bounded metadata, hashes and links are retained.",
         )
     )
     result.sections.append(Section("Page inventory", "table", pages, "Same-host pages reached within the explicit crawl budget."))
     result.sections.append(Section("Discovered link edges", "table", link_edges[:300], "URLs are normalised without query strings or fragments."))
+    result.sections.append(Section("Public contact signals", "table", contact_signals[:300], "Email and phone strings found in authorized same-host HTML; no account probing is performed."))
+    for contact in contact_signals[:200]:
+        add_entity(result, contact["kind"], contact["value"], "web.public_contact", pivot=False, label="Public contact on authorized page", confidence=0.8, metadata={"page": contact["page"]})
     result.sections.append(Section("Sitemap URLs", "tags", sitemap_pages[:200], "Public sitemap locations observed during the crawl."))
     for page in pages[:100]:
         add_link(result, page["title"] or page["url"], page["url"], "discovered-page", "authorized asset crawl")
@@ -245,6 +267,7 @@ async def run_web(ctx: ScanContext, target: str) -> ModuleResult:
             "pages_checked": len(pages),
             "pages_discovered": len(queued),
             "link_edges": len(link_edges),
+            "public_contact_signals": len(contact_signals),
             "skipped_robots": skipped_robots,
             "robots_available": robots_available,
         }

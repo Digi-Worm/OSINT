@@ -71,6 +71,7 @@
       auto_pivot: $("autoPivot").checked,
       safe_mode: $("safeMode").checked,
       authorized_asset_crawl: $("authorizedAssetCrawl").checked,
+      collect_public_contacts: $("collectPublicContacts").checked,
       pivot_depth: Number($("pivotDepth").value),
       crawl_max_pages: Number($("crawlMaxPages").value),
       crawl_depth: Number($("crawlDepth").value),
