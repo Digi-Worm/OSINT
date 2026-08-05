@@ -45,6 +45,8 @@ DEFAULT_OPTIONS: Dict[str, Any] = {
     "crawl_depth": 1,
     "crawl_delay_ms": 250,
     "resolve_subdomains": True,
+    "remote_site_catalog": True,
+    "max_username_sites": 300,
 }
 
 
@@ -88,6 +90,8 @@ def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "crawl_depth": clamp(options.get("crawl_depth"), 0, 2, 1),
             "crawl_delay_ms": clamp(options.get("crawl_delay_ms"), 100, 2000, 250),
             "resolve_subdomains": bool(options.get("resolve_subdomains", True)),
+            "remote_site_catalog": bool(options.get("remote_site_catalog", True)),
+            "max_username_sites": clamp(options.get("max_username_sites"), 50, 500, 300),
         }
     )
     selected = options.get("modules", None)

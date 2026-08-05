@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import quote, urlsplit
@@ -21,6 +22,7 @@ from .base import (
 )
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "sites.json"
+SHERLOCK_DATA_URL = "https://raw.githubusercontent.com/sherlock-project/sherlock/refs/heads/master/sherlock_project/resources/data.json"
 
 
 def _sites() -> List[Dict[str, Any]]:
@@ -32,12 +34,87 @@ def _sites() -> List[Dict[str, Any]]:
         return []
 
 
+def _remote_site_rules(payload: Any, limit: int) -> List[Dict[str, Any]]:
+    """Adapt Sherlock's public JSON catalogue to DigiScope's safe GET model."""
+
+    if not isinstance(payload, dict):
+        return []
+    rules: List[Dict[str, Any]] = []
+    for name, item in payload.items():
+        if not isinstance(item, dict) or item.get("isNSFW"):
+            continue
+        method = str(item.get("request_method", "GET")).upper()
+        template = str(item.get("url", ""))
+        if method != "GET" or not template.startswith(("http://", "https://")) or "{}" not in template:
+            continue
+        missing = item.get("errorMsg", [])
+        if isinstance(missing, str):
+            missing = [missing]
+        if not isinstance(missing, list):
+            missing = []
+        regex = str(item.get("regexCheck", ""))
+        if regex:
+            try:
+                re.compile(regex)
+            except re.error:
+                regex = ""
+        rules.append(
+            {
+                "name": str(name),
+                "category": ", ".join(str(tag) for tag in (item.get("tags", []) or [])[:4]) or "Other",
+                "url": template.replace("{}", "{username}"),
+                "missing": [str(value) for value in missing[:12]],
+                "regex": regex,
+            }
+        )
+        if len(rules) >= limit:
+            break
+    return rules
+
+
+async def _catalogue(ctx: ScanContext, local_sites: List[Dict[str, Any]]) -> Dict[str, Any]:
+    limit = max(50, min(int(ctx.key("max_username_sites", 300)), 500))
+    if not ctx.key("remote_site_catalog", True):
+        return {"sites": local_sites[:limit], "source": "bundled catalogue", "remote": False, "note": "Remote catalogue refresh disabled."}
+    response = await ctx.fetcher.get_json(SHERLOCK_DATA_URL, source="Sherlock-compatible site catalogue", max_bytes=5_000_000)
+    remote_sites = _remote_site_rules(response.data, limit) if response.ok else []
+    if not remote_sites:
+        return {
+            "sites": local_sites[:limit],
+            "source": "bundled catalogue",
+            "remote": False,
+            "note": response.error or f"Remote catalogue unavailable (HTTP {response.status}); bundled rules used.",
+        }
+    seen = set()
+    merged = []
+    for site in remote_sites + local_sites:
+        key = (site.get("name", ""), site.get("url", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(site)
+        if len(merged) >= limit:
+            break
+    return {"sites": merged, "source": "Sherlock-compatible remote + bundled fallback", "remote": True, "note": "NSFW and non-GET rules were excluded."}
+
+
 def _site_url(template: str, username: str) -> str:
     return template.replace("{username}", quote(username, safe=""))
 
 
 async def _probe_site(ctx: ScanContext, site: Dict[str, Any], username: str) -> Dict[str, Any]:
     name = str(site.get("name", "Unknown"))
+    regex = str(site.get("regex", ""))
+    if regex and not re.fullmatch(regex, username):
+        return {
+            "platform": name,
+            "category": site.get("category", "Other"),
+            "url": _site_url(str(site.get("url", "")), username),
+            "state": "not_applicable",
+            "reason": "username does not match site format",
+            "status": 0,
+            "elapsed_ms": 0,
+        }
     url = _site_url(str(site.get("url", "")), username)
     response = await ctx.fetcher.get_text(url, source=f"username:{name}", max_bytes=260_000)
     body = response.text.lower()
@@ -109,9 +186,9 @@ async def _github_enrichment(ctx: ScanContext, username: str) -> Dict[str, Any]:
 @register(
     "username",
     "Username presence",
-    "Concurrent heuristic profile checks across a 70+ site catalogue plus live GitHub profile and repository enrichment.",
+    "Concurrent heuristic profile checks using a validated Sherlock-compatible public catalogue plus live GitHub profile and repository enrichment.",
     category="identity",
-    sources=["public profile URLs", "GitHub API"],
+    sources=["bundled 72-site fallback", "Sherlock-compatible public catalogue", "GitHub API"],
 )
 async def run_username(ctx: ScanContext, target: str) -> Any:
     username = target.strip().lstrip("@")
@@ -121,7 +198,9 @@ async def run_username(ctx: ScanContext, target: str) -> Any:
         result.error = "Username must be a non-empty handle without whitespace"
         return result
 
-    sites = _sites()
+    local_sites = _sites()
+    catalogue = await _catalogue(ctx, local_sites)
+    sites = catalogue["sites"]
     if not sites:
         result.status = "error"
         result.error = "Username site catalogue is unavailable"
@@ -134,6 +213,22 @@ async def run_username(ctx: ScanContext, target: str) -> Any:
     found = [record for record in records if record["state"] == "found"]
     inconclusive = [record for record in records if record["state"] == "inconclusive"]
     not_found = [record for record in records if record["state"] == "not_found"]
+    not_applicable = [record for record in records if record["state"] == "not_applicable"]
+    result.sections.append(
+        Section(
+            "Catalogue coverage",
+            "kv",
+            {
+                "sites_checked": len(records),
+                "catalogue_source": catalogue["source"],
+                "remote_refresh": catalogue["remote"],
+                "site_policy": "GET-only, public profile URLs; NSFW and non-GET rules excluded.",
+            },
+            catalogue["note"],
+        )
+    )
+    if not catalogue["remote"]:
+        result.notes.append(f"Username catalogue fallback: {catalogue['note']}")
     result.sections.append(
         Section(
             "Presence coverage",
@@ -142,6 +237,7 @@ async def run_username(ctx: ScanContext, target: str) -> Any:
                 "checked": len(records),
                 "found": len(found),
                 "not_found": len(not_found),
+                "not_applicable": len(not_applicable),
                 "inconclusive": len(inconclusive),
                 "method": "Concurrent public profile URL probes; status and missing-page markers are heuristic.",
             },
@@ -203,7 +299,7 @@ async def run_username(ctx: ScanContext, target: str) -> Any:
     exact_query = quote('"' + username + '"', safe="")
     add_link(result, "Google exact-username search", "https://www.google.com/search?q=" + exact_query, "search", "Google")
     add_link(result, "GitHub user", f"https://github.com/{quote(username, safe='')}", "profile", "GitHub")
-    result.coverage.update({"checked": len(records), "found": len(found), "inconclusive": len(inconclusive), "not_found": len(not_found), "github_profile": bool(github.get("ok"))})
+    result.coverage.update({"checked": len(records), "found": len(found), "inconclusive": len(inconclusive), "not_found": len(not_found), "not_applicable": len(not_applicable), "github_profile": bool(github.get("ok")), "catalogue_source": catalogue["source"], "catalogue_remote": catalogue["remote"], "catalogue_sites": len(sites)})
     return result
 
 

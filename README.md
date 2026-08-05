@@ -11,7 +11,7 @@ DigiScope is a standalone, browser-first OSINT dashboard for **passive, public-s
 | Domain | A/AAAA/MX/NS/TXT/SOA/CNAME/CAA/DS, SPF/DMARC/DKIM selector checks, MTA-STS, DNSSEC signal, HTTP headers/title/technology hints, RDAP, CT names/issuers, Wayback and an explicit authorized same-host web-surface map | Google Public DNS DoH, rdap.org, crt.sh, Internet Archive, target HTTP(S), target robots/sitemaps |
 | IP | Reverse DNS, approximate geolocation/network, RIR allocation and abuse contacts, ASN/routing context, historical services/CVEs/CPEs | system DNS, ip-api.com, rdap.org, BGPView, Shodan InternetDB; full Shodan host data with an optional key |
 | Email | Syntax/role/disposable heuristics, MX, Gravatar hash/profile, public GitHub commit-email metadata, optional breach lookup | offline parser, DNS, Gravatar, GitHub; HIBP with a user-supplied key |
-| Username | Concurrent heuristic presence checks across a packaged 70+ site catalogue, coverage counts, GitHub profile/repos/blog/social enrichment | public profile URLs, GitHub API |
+| Username | Concurrent heuristic presence checks using a validated Sherlock-compatible public catalogue with bundled fallback, coverage counts, GitHub profile/repos/blog/social enrichment | public profile URLs, public catalogue JSON, GitHub API |
 | Phone | Offline validity/possibility, carrier/region/timezone hints, E.164/international/national/RFC3966 formats, curated lookup links | libphonenumber metadata; Numverify optional |
 | Person | Dork/search plan for general, social, professional, image, documents and public-sector queries; bounded public-index discovery; probable handle permutations | Google/Bing/DuckDuckGo links, Wikipedia, Wikidata, OpenAlex, Crossref, GitHub API, LinkedIn and image search |
 | URL | Scheme/host/path/query-key breakdown, bounded five-hop redirect chain, status/title/headers, host pivot | target HTTP(S) |
@@ -55,7 +55,7 @@ The image runs as a non-root user, is read-only at runtime, has a healthcheck, a
 ## Dashboard controls
 
 * Auto-detection shows a confidence score and reason; the selector type can be overridden.
-* Module chips let the analyst enable/disable each source family.
+* Module chips let the analyst enable/disable each source family. Username scans can refresh a public Sherlock-compatible rule catalogue (GET-only, NSFW/non-GET rules excluded) or use DigiScope's bundled fallback, with a per-scan site budget.
 * Auto-pivot, BFS pivot depth (`0–3`), bounded concurrency, per-source timeout and CT-name cap are per-scan controls.
 * Safe/passive mode is on by default. It blocks literal/private/local destinations and DigiScope never performs active port scans, internet-wide scanning or hidden-service crawling. An explicit **Authorized same-host crawl** opt-in is available for assets you own: it obeys robots when available, uses GET only, stays on one host, skips forms/binaries/query strings, enforces a page/depth/delay budget, and stores metadata rather than page bodies. This mapper is self-hosted and keyless.
 * Phone region and person context are local scan options. Person mode can query bounded public knowledge indexes (Wikipedia, Wikidata, OpenAlex, Crossref and GitHub) as candidate-only leads; it never automatically merges or resolves a person identity.
@@ -119,6 +119,8 @@ The application has no database. A bounded in-memory job/history store is suitab
 
 The public interfaces and data semantics used during implementation are based on the providers' public documentation and standards:
 
+* [SpiderFoot](https://github.com/smicallef/spiderfoot), [OWASP Amass](https://github.com/owasp-amass/amass) and [ProjectDiscovery Subfinder](https://github.com/projectdiscovery/subfinder) informed the registry/event, passive-source, provenance, wildcard-elimination and bounded asset-mapping design. DigiScope reimplements selected passive ideas rather than shelling out to those projects.
+* [Sherlock](https://github.com/sherlock-project/sherlock) and [Maigret](https://github.com/soxoj/maigret) informed the maintained username catalogue, site-specific missing-page rules, format validation, coverage counts and false-positive warnings. DigiScope excludes NSFW/non-GET rules and uses a bundled fallback.
 * [RDAP.org](https://about.rdap.org/) and [RFC 9082/9083](https://datatracker.ietf.org/doc/rfc9083/) for machine-readable registration data.
 * [Google Public DNS JSON DoH](https://developers.google.com/speed/public-dns/docs/doh/json) for record and DNSSEC-aware fallback queries.
 * [Shodan InternetDB](https://internetdb.shodan.io/) for a keyless, passive IP snapshot of ports, CPEs, hostnames, tags and CVE identifiers.
