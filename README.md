@@ -111,7 +111,7 @@ The application has no database. A bounded in-memory job/history store is suitab
 * `httpx.AsyncClient` is shared per scan with TLS verification, `http2=False`, explicit `http/1.1` ALPN and a browser-like user agent.
 * Every source call returns a structured response; exceptions are converted into source notes.
 * Safe mode rejects private, loopback, link-local, multicast, reserved, unspecified, `.local`, `.internal` and embedded-credential URLs. Literal IP validation is strict.
-* DNS uses dnspython first and `https://dns.google/resolve` JSON DoH as a fallback when UDP/53 is unavailable.
+* DNS uses dnspython first and `https://dns.google/resolve` JSON DoH as a fallback when UDP/53 is unavailable. Discovered passive names can be bounded-resolved to A/AAAA records, and a random-label wildcard-DNS probe is shown separately so wildcard answers are not mistaken for unique hosts.
 * Shodan InternetDB is an existing public snapshot. DigiScope does not probe ports, brute-force credentials, evade access controls, scrape search engines, or crawl sites.
 * Username presence is heuristic. HTTP 200 is reported as a lead and is not evidence of identity; rate-limited/blocked checks are shown as inconclusive.
 

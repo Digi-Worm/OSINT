@@ -75,6 +75,7 @@
       crawl_max_pages: Number($("crawlMaxPages").value),
       crawl_depth: Number($("crawlDepth").value),
       crawl_delay_ms: Number($("crawlDelay").value),
+      resolve_subdomains: $("resolveSubdomains").checked,
       concurrency: Number($("concurrency").value),
       timeout: Number($("timeout").value),
       max_subdomains: Number($("maxSubdomains").value),

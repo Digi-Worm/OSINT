@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict
+import uuid
+from typing import Any, Dict, List
 from urllib.parse import quote, urlsplit
 
 from bs4 import BeautifulSoup
@@ -357,6 +358,50 @@ async def _certificates(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     }
 
 
+async def _resolve_passive_hosts(ctx: ScanContext, subdomains: Any) -> List[Dict[str, Any]]:
+    """Resolve a bounded number of observed names to A/AAAA records only."""
+
+    if not ctx.key("resolve_subdomains", True):
+        return []
+    names = list(dict.fromkeys(str(value) for value in (subdomains or [])))[:100]
+    limiter = asyncio.Semaphore(16)
+
+    async def resolve(name: str) -> Dict[str, Any]:
+        async with limiter:
+            answers = await ctx.dns.query_many(name, ["A", "AAAA"])
+        addresses = []
+        sources = []
+        errors = []
+        for answer in answers:
+            addresses.extend(answer.values)
+            if answer.source:
+                sources.append(answer.source)
+            if answer.error:
+                errors.append(f"{answer.record_type}: {answer.error}")
+        return {
+            "hostname": name,
+            "addresses": dedupe_strings(addresses),
+            "resolver": ", ".join(dedupe_strings(sources)),
+            "status": "resolved" if addresses else "no A/AAAA answer",
+            "error": "; ".join(errors)[:300],
+        }
+
+    return list(await asyncio.gather(*(resolve(name) for name in names)))
+
+
+async def _wildcard_dns(ctx: ScanContext, domain: str) -> Dict[str, Any]:
+    label = f"_digiscope-{uuid.uuid4().hex[:12]}.{domain}"
+    answers = await ctx.dns.query_many(label, ["A", "AAAA"])
+    addresses = dedupe_strings([value for answer in answers for value in answer.values])
+    return {
+        "probe": label,
+        "wildcard_observed": bool(addresses),
+        "addresses": addresses,
+        "resolvers": dedupe_strings([answer.source for answer in answers if answer.source]),
+        "errors": [f"{answer.record_type}: {answer.error}" for answer in answers if answer.error],
+    }
+
+
 async def _wayback(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     url = "https://archive.org/wayback/available"
     response = await ctx.fetcher.get_json(
@@ -398,6 +443,10 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
         _certificates(ctx, domain),
         _wayback(ctx, domain),
         _http_fingerprint(ctx, domain),
+    )
+    resolved_hosts, wildcard = await asyncio.gather(
+        _resolve_passive_hosts(ctx, certificates.get("subdomains", [])),
+        _wildcard_dns(ctx, domain),
     )
 
     dns_rows = []
@@ -513,6 +562,14 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
         failure = "; ".join(certificates.get("failures", [])) or "no passive subdomain source responded"
         add_failure(result, "passive subdomain sources", failure)
 
+    result.sections.append(Section("Resolved passive hosts", "table", resolved_hosts, "A/AAAA lookups for observed names only; no ports or web probes are performed."))
+    result.sections.append(Section("Wildcard DNS detection", "kv", wildcard, "A random-label DNS probe helps distinguish wildcard answers from concrete subdomains."))
+    for host_row in resolved_hosts:
+        for address in host_row.get("addresses", []):
+            add_entity(result, "ip", address, "domain.subdomain_dns", pivot=False, label=f"Address for {host_row['hostname']}", confidence=0.9)
+    if wildcard.get("wildcard_observed"):
+        result.notes.append("Wildcard DNS answered for a random label; some discovered names may resolve to the same default service.")
+
     if wayback.get("ok"):
         result.sections.append(Section("Wayback availability", "kv", {key: value for key, value in wayback.items() if key not in {"ok", "url"}}, "Closest public archive snapshot", wayback.get("snapshot") or wayback.get("url", "")))
         if wayback.get("timestamp"):
@@ -546,6 +603,8 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
             "ips_found": len(ips),
             "sources_checked": 5,
             "passive_subdomain_sources": len(certificates.get("source_status", [])),
+            "resolved_passive_hosts": sum(row.get("status") == "resolved" for row in resolved_hosts),
+            "wildcard_dns_observed": wildcard.get("wildcard_observed", False),
         }
     )
     if dns_failures == len(record_types):
