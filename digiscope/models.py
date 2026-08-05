@@ -214,6 +214,7 @@ SELECTOR_TYPES = [
     "username",
     "phone",
     "person",
+    "company",
     "url",
     "hash",
     "crypto",

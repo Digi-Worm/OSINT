@@ -14,6 +14,7 @@ _MODULE_NAMES = (
     "username",
     "phone",
     "person",
+    "company",
     "url",
     "hash",
     "crypto",

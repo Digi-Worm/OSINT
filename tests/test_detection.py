@@ -9,6 +9,7 @@ def test_detector_covers_every_supported_selector():
         "octocat": "username",
         "+1 202 555 0123": "phone",
         "Ada Lovelace": "person",
+        "Acme Corporation": "company",
         "https://example.org/path?q=1": "url",
         "d41d8cd98f00b204e9800998ecf8427e": "hash",
         "1BoatSLRHtKNngkdXxeobR76b53LETtpyT": "crypto",

@@ -20,6 +20,7 @@ DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?:[A-Za-z0-9_\u0080-\uffff](?:[A-Za-z0-9_\-.\u0080-\uffff]*[A-Za-z0-9_\u0080-\uffff])?)$"
 )
 USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{1,63}$")
+COMPANY_SUFFIXES = {"inc", "inc.", "llc", "ltd", "limited", "corp", "corporation", "company", "co", "gmbh", "plc", "pvt", "llp"}
 BTC_RE = re.compile(r"^(?:bc1[a-z0-9]{20,87}|[13][1-9A-HJ-NP-Za-km-z]{24,39})$")
 ETH_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
@@ -129,11 +130,15 @@ def detect_selector(value: str, default_region: Optional[str] = None) -> Detecti
         candidates.append(_candidate("domain", 0.94, "Hostname-shaped value with a DNS suffix"))
         return Detection("domain", 0.94, _normalise_domain(domain_value), "Domain or hostname", candidates)
 
+    words = [word for word in re.split(r"\s+", raw) if word]
+    if len(words) >= 2 and words[-1].lower().rstrip(".,") in COMPANY_SUFFIXES:
+        candidates.append(_candidate("company", 0.9, "Company/legal-entity suffix detected"))
+        return Detection("company", 0.9, " ".join(words), "Company / organization investigation", candidates)
+
     if USERNAME_RE.fullmatch(raw) and not raw.isdigit():
         candidates.append(_candidate("username", 0.68, "Handle-shaped value without whitespace"))
         return Detection("username", 0.68, raw, "Username or handle", candidates)
 
-    words = [word for word in re.split(r"\s+", raw) if word]
     if len(words) >= 2 and all(re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ'’-]+", word) for word in words):
         candidates.append(_candidate("person", 0.76, "Multiple name-like words"))
         return Detection("person", 0.76, " ".join(words), "Person name / investigation plan", candidates)

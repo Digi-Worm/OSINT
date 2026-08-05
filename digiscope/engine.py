@@ -98,7 +98,7 @@ def normalize_options(raw: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if selected is None:
         normalized["modules"] = None
     elif isinstance(selected, (list, tuple, set)):
-        normalized["modules"] = [str(value) for value in selected if str(value) in REGISTRY or str(value) in {"domain", "ip", "email", "username", "phone", "person", "url", "hash", "crypto"}]
+        normalized["modules"] = [str(value) for value in selected if str(value) in REGISTRY or str(value) in {"domain", "ip", "email", "username", "phone", "person", "company", "url", "hash", "crypto"}]
     else:
         normalized["modules"] = None
     for name in SECRET_OPTIONS:
@@ -128,6 +128,7 @@ ENTITY_MODULES = {
     "username": "username",
     "phone": "phone",
     "person": "person",
+    "company": "company",
     "url": "url",
     "hash": "hash",
     "crypto": "crypto",

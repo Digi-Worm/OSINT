@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import uuid
 from typing import Any, Dict, List
 from urllib.parse import quote, urlsplit
@@ -70,6 +72,50 @@ def _parse_title(html: str) -> str:
         return ""
 
 
+def _organization_metadata(page: str, domain: str) -> Dict[str, Any]:
+    """Extract public Organization JSON-LD and official profile links."""
+
+    organization: Dict[str, Any] = {}
+    public_links = []
+    try:
+        soup = BeautifulSoup(page[:350_000], "html.parser")
+    except Exception:
+        return {"organization": organization, "public_links": public_links}
+    for script in soup.find_all("script", attrs={"type": re.compile("ld\\+json", re.I)}):
+        try:
+            data = json.loads(script.get_text(strip=True))
+        except (TypeError, ValueError):
+            continue
+        candidates = data if isinstance(data, list) else [data]
+        if isinstance(data, dict) and isinstance(data.get("@graph"), list):
+            candidates.extend(data["@graph"])
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            types = item.get("@type", [])
+            types = types if isinstance(types, list) else [types]
+            if not any("organization" in str(value).lower() or str(value).lower() in {"localbusiness", "corporation"} for value in types):
+                continue
+            for key in ("name", "url", "logo", "email", "telephone", "address", "description"):
+                if item.get(key) not in (None, ""):
+                    organization[key] = item[key]
+            same_as = item.get("sameAs", [])
+            organization["sameAs"] = same_as if isinstance(same_as, list) else [same_as]
+            break
+    for anchor in soup.find_all("a", href=True):
+        href = str(anchor.get("href", "")).strip()
+        lower = href.lower()
+        if href.startswith(("http://", "https://")) and any(host in lower for host in ("linkedin.com", "github.com", "facebook.com", "instagram.com", "x.com", "youtube.com", "maps.google.", "google.com/maps")):
+            if href not in public_links:
+                public_links.append(href)
+        if len(public_links) >= 30:
+            break
+    if organization.get("sameAs"):
+        public_links.extend(value for value in organization["sameAs"] if isinstance(value, str) and value not in public_links)
+    organization["sameAs"] = [value for value in organization.get("sameAs", []) if isinstance(value, str) and value.startswith(("http://", "https://"))][:30]
+    return {"organization": organization, "public_links": public_links[:30]}
+
+
 async def _http_fingerprint(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     for scheme in ("https", "http"):
         url = f"{scheme}://{domain}/"
@@ -100,6 +146,7 @@ async def _http_fingerprint(ctx: ScanContext, domain: str) -> Dict[str, Any]:
                 if marker in html_lower and technology not in tech:
                     tech.append(technology)
             security = {label: bool(headers.get(header)) for header, label in SECURITY_HEADERS}
+            organization = _organization_metadata(response.text, domain)
             return {
                 "url": response.url or url,
                 "scheme": scheme,
@@ -111,6 +158,8 @@ async def _http_fingerprint(ctx: ScanContext, domain: str) -> Dict[str, Any]:
                 "redirect": headers.get("location", ""),
                 "security_headers": security,
                 "technology_hints": tech,
+                "organization": organization.get("organization", {}),
+                "public_links": organization.get("public_links", []),
                 "elapsed_ms": response.elapsed_ms,
                 "error": response.error,
             }
@@ -589,7 +638,23 @@ async def run_domain(ctx: ScanContext, target: str) -> ModuleResult:
     else:
         add_failure(result, "target HTTP(S)", http_fingerprint.get("error", "unreachable"))
 
-    add_link(result, "RDAP registration", f"https://rdap.org/domain/{quote(domain, safe='')}", "registration", "rdap.org")
+    organization = http_fingerprint.get("organization", {}) or {}
+    if organization:
+        result.sections.append(Section("Public organization metadata", "kv", organization, "Structured data published by the target website; not independently verified."))
+        organization_name = organization.get("name")
+        organization_url = organization.get("url", "")
+        same_host = False
+        try:
+            same_host = (urlsplit(str(organization_url)).hostname or "").lower().rstrip(".") == domain
+        except ValueError:
+            pass
+        if organization_name:
+            add_entity(result, "company", organization_name, "domain.organization_jsonld", pivot=same_host, label="Website Organization metadata", confidence=0.8)
+        for public_link in http_fingerprint.get("public_links", [])[:30]:
+            add_link(result, "Public organization profile", public_link, "organization-profile", "target JSON-LD/HTML")
+
+    add_link(result, "RDAP registration",
+ f"https://rdap.org/domain/{quote(domain, safe='')}", "registration", "rdap.org")
     add_link(result, "Certificate Transparency search", f"https://crt.sh/?q=%25.{quote(domain, safe='')}", "certificates", "crt.sh")
     add_link(result, "Wayback snapshots", f"https://web.archive.org/web/*/{quote(domain, safe='')}", "history", "Internet Archive")
     add_link(result, "urlscan.io search", f"https://urlscan.io/search/#{quote('domain:' + domain, safe='')}", "threat-intel", "urlscan.io")

@@ -14,6 +14,7 @@ DigiScope is a standalone, browser-first OSINT dashboard for **passive, public-s
 | Username | Concurrent heuristic presence checks using a validated Sherlock-compatible public catalogue with bundled fallback, coverage counts, GitHub profile/repos/blog/social enrichment | public profile URLs, public catalogue JSON, GitHub API |
 | Phone | Offline validity/possibility, carrier/region/timezone hints, E.164/international/national/RFC3966 formats, curated lookup links | libphonenumber metadata; Numverify optional |
 | Person | Dork/search plan for general, social, professional, image, documents and public-sector queries; bounded public-index discovery; probable handle permutations | Google/Bing/DuckDuckGo links, Wikipedia, Wikidata, OpenAlex, Crossref, GitHub API, LinkedIn and image search |
+| Company | Public organization indexes, GitHub organizations/public members, structured website metadata, map/professional/registry links and ownership-verification plan | Wikipedia, Wikidata, OpenAlex, GitHub API, Google Maps, Bing Maps, LinkedIn, OpenCorporates links |
 | URL | Scheme/host/path/query-key breakdown, bounded five-hop redirect chain, status/title/headers, host pivot | target HTTP(S) |
 | Hash | MD5/SHA-1/SHA-256/SHA-512 identification, optional VirusTotal, MalwareBazaar and analyst pivots | offline checks, MalwareBazaar, VirusTotal optional key |
 | Crypto | Bitcoin balance/transaction context, optional Ethereum dashboard, explorer links | Blockchain.com, Blockchair, Etherscan |
