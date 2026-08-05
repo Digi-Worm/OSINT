@@ -12,6 +12,7 @@ from urllib.parse import quote, urlsplit
 from bs4 import BeautifulSoup
 
 from ..models import ModuleResult, Section
+from ..network import FetchResponse
 from .base import (
     ScanContext,
     add_entity,
@@ -202,6 +203,35 @@ async def _rdap(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     }
 
 
+async def _commoncrawl(ctx: ScanContext, domain: str) -> FetchResponse:
+    """Query the newest Common Crawl CDX index for historical hostnames."""
+
+    collections = await ctx.fetcher.get_json("https://index.commoncrawl.org/collinfo.json", source="Common Crawl collections", max_bytes=500_000)
+    if not collections.ok or not isinstance(collections.data, list) or not collections.data:
+        return FetchResponse(False, status=collections.status, url=collections.url, error=collections.error or "Common Crawl collections unavailable", source="Common Crawl")
+    latest = collections.data[0] if isinstance(collections.data[0], dict) else {}
+    api_url = str(latest.get("cdx-api", ""))
+    if not api_url:
+        return FetchResponse(False, error="Common Crawl collection did not provide a CDX API", source="Common Crawl")
+    response = await ctx.fetcher.get_text(
+        api_url,
+        params={"url": f"*.{domain}/*", "output": "json", "filter": "status:200", "collapse": "urlkey", "limit": int(ctx.key("max_subdomains", 100)) * 10},
+        source="Common Crawl CDX",
+        max_bytes=2_000_000,
+    )
+    if response.text:
+        rows = []
+        for line in response.text.splitlines():
+            try:
+                item = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(item, dict):
+                rows.append(item)
+        response.data = rows
+    return response
+
+
 async def _certificates(ctx: ScanContext, domain: str) -> Dict[str, Any]:
     """Union passive hostnames from CT, archives and public DNS datasets."""
 
@@ -268,6 +298,32 @@ async def _certificates(ctx: ScanContext, domain: str) -> Dict[str, Any]:
                 max_bytes=2_000_000,
             ),
         ),
+        (
+            "Anubis-DB",
+            ctx.fetcher.get_json(
+                f"https://anubisdb.com/anubis/subdomains/{quote(domain, safe='')}",
+                source="Anubis-DB public subdomains",
+                max_bytes=2_000_000,
+            ),
+        ),
+        (
+            "ThreatMiner",
+            ctx.fetcher.get_json(
+                "https://api.threatminer.org/v2/domain.php",
+                params={"q": domain, "rt": "5"},
+                source="ThreatMiner domain subdomains",
+                max_bytes=1_000_000,
+            ),
+        ),
+        (
+            "AlienVault OTX",
+            ctx.fetcher.get_json(
+                f"https://otx.alienvault.com/api/v1/indicators/domain/{quote(domain, safe='')}/passive_dns",
+                source="AlienVault OTX passive DNS",
+                max_bytes=1_500_000,
+            ),
+        ),
+        ("Common Crawl", _commoncrawl(ctx, domain)),
     ]
     responses = await asyncio.gather(*(request for _source, request in source_requests))
     names = set()
@@ -381,6 +437,27 @@ async def _certificates(ctx: ScanContext, domain: str) -> Dict[str, Any]:
                 for value in (page.get("domain"), task.get("domain"), page.get("url"), task.get("url")):
                     try:
                         add_name(urlsplit(str(value)).hostname or str(value), source)
+                    except ValueError:
+                        continue
+        elif source == "Anubis-DB":
+            values = data.get("subdomains", data.get("results", data)) if isinstance(data, dict) else data
+            for item in values or []:
+                if isinstance(item, dict):
+                    add_name(item.get("subdomain") or item.get("hostname") or item.get("domain"), source)
+                else:
+                    add_name(item, source)
+        elif source == "ThreatMiner" and isinstance(data, dict):
+            for item in data.get("results", []) or []:
+                add_name(item.get("domain") if isinstance(item, dict) else item, source)
+        elif source == "AlienVault OTX" and isinstance(data, dict):
+            for item in data.get("passive_dns", []) or []:
+                if isinstance(item, dict):
+                    add_name(item.get("hostname") or item.get("domain"), source)
+        elif source == "Common Crawl" and isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    try:
+                        add_name(urlsplit(str(item.get("url", ""))).hostname or "", source)
                     except ValueError:
                         continue
         else:
